@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sliders Task Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3250;
+    --accent: #4f7cff;
+    --accent2: #7c5cfc;
+    --green: #22c987;
+    --amber: #f5a623;
+    --red: #f25c5c;
+    --text: #e8eaf6;
+    --muted: #7b82a6;
+    --radius: 10px;
+    --font: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+  .app { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .main { padding: 28px 32px; overflow-y: auto; }
+  .sidebar-header { padding: 22px 20px 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); }
+  .sidebar-header p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .sidebar-section { padding: 12px 12px 0; }
+  .sidebar-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding: 0 8px; margin-bottom: 6px; }
+  .task-btn {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
+    background: none; border: none; border-radius: 8px; cursor: pointer;
+    color: var(--muted); font-size: 13px; text-align: left; transition: all 0.15s;
+  }
+  .task-btn:hover { background: var(--surface2); color: var(--text); }
+  .task-btn.active { background: var(--surface2); color: var(--text); }
+  .task-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .task-meta-small { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .session-bar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; display: flex; gap: 32px; flex-wrap: wrap; align-items: center; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat-val { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .stat-label { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+  .session-bar .divider { width: 1px; height: 36px; background: var(--border); }
+  .task-header { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 24px; }
+  .target-img { width: 120px; height: 120px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); flex-shrink: 0; cursor: zoom-in; transition: opacity 0.15s; }
+  .target-img:hover { opacity: 0.85; }
+  .task-info { flex: 1; }
+  .task-info h2 { font-size: 18px; font-weight: 600; margin-bottom: 10px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .badge-green { background: rgba(34,201,135,0.12); color: var(--green); border: 1px solid rgba(34,201,135,0.25); }
+  .badge-amber { background: rgba(245,166,35,0.12); color: var(--amber); border: 1px solid rgba(245,166,35,0.25); }
+  .badge-red   { background: rgba(242,92,92,0.12);  color: var(--red);   border: 1px solid rgba(242,92,92,0.25); }
+  .badge-blue  { background: rgba(79,124,255,0.12); color: var(--accent); border: 1px solid rgba(79,124,255,0.25); }
+  .badge-muted { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .card h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 14px; }
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .timeline-item { display: grid; grid-template-columns: 40px 1fr; gap: 14px; position: relative; }
+  .timeline-item:not(:last-child)::before { content: ''; position: absolute; left: 19px; top: 40px; bottom: -4px; width: 1px; background: var(--border); z-index: 0; }
+  .step-circle {
+    width: 40px; height: 40px; border-radius: 50%; background: var(--surface2);
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: var(--muted); flex-shrink: 0; position: relative; z-index: 1;
+  }
+  .step-circle.clicked { border-color: var(--green); color: var(--green); background: rgba(34,201,135,0.08); }
+  .search-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+  .search-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 12px; }
+  .query { font-size: 14px; color: var(--text); font-style: italic; flex: 1; }
+  .search-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+  .timestamp { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .sliders-grid { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  .slider-name { font-size: 12px; color: var(--muted); width: 110px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slider-track { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .slider-fill { height: 100%; border-radius: 3px; }
+  .slider-pct { font-size: 11px; color: var(--muted); width: 32px; text-align: right; }
+  .img-modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(6px);
+    align-items: center; justify-content: center; cursor: zoom-out;
+  }
+  .img-modal-overlay.open { display: flex; }
+  .img-modal-overlay img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 0 60px rgba(0,0,0,0.8); animation: zoomIn 0.2s ease; }
+  @keyframes zoomIn { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .no-data { color: var(--muted); font-style: italic; font-size: 13px; margin-top: 6px; }
+  .loading { color: var(--muted); padding: 48px; text-align: center; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Sliders Dashboard</h1>
+      <p id="session-subtitle">Loading...</p>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Tasks</div>
+      <div id="task-list"></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div id="session-summary"></div>
+    <div id="task-detail"><div class="loading">Loading data...</div></div>
+  </main>
+</div>
+
+<div class="img-modal-overlay" id="imgModal" onclick="closeModal()">
+  <img id="imgModalSrc" src="" alt="zoomed target image">
+</div>
+
+<script>
+let allData = null;
+let rankChart = null;
+let sliderChart = null;
+
+function openModal(src) {
+  document.getElementById('imgModalSrc').src = src;
+  document.getElementById('imgModal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('imgModal').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Data loading & joining (replaces Flask/Python backend) ──────────────────
+
+async function loadJSON(path) {
+  const res = await fetch(path);
+  return res.json();
+}
+
+function parseDate(val) {
+  if (val && typeof val === 'object' && '$date' in val) val = val['$date'];
+  return val ? new Date(val) : null;
+}
+
+function durSec(a, b) {
+  return Math.round((parseDate(b) - parseDate(a)) / 1000);
+}
+
+async function buildData() {
+  const [sessions, tasks, searches, clicks] = await Promise.all([
+    loadJSON('data/sessions.json'),
+    loadJSON('data/tasks.json'),
+    loadJSON('data/searches.json'),
+    loadJSON('data/clicks.json'),
+  ]);
+
+  // Index searches by task_id
+  const searchesByTask = {};
+  searches.forEach(s => {
+    searchesByTask[s.task_id] = searchesByTask[s.task_id] || [];
+    searchesByTask[s.task_id].push(s);
+  });
+
+  // Index clicks by search_id
+  const clicksBySearch = {};
+  clicks.forEach(c => {
+    clicksBySearch[c.search_id] = clicksBySearch[c.search_id] || [];
+    clicksBySearch[c.search_id].push(c);
+  });
+
+  return sessions.map(session => {
+    const sid = session.session_id;
+    const sessionStart = parseDate(session.start_time);
+    const sessionEnd = parseDate(session.end_time);
+    const sessionDur = Math.round((sessionEnd - sessionStart) / 1000);
+
+    const sessionTasks = tasks
+      .filter(t => t.session_id === sid)
+      .sort((a, b) => a.task_idx - b.task_idx)
+      .map(task => {
+        const tid = task.task_id;
+        const taskDur = durSec(task.start_time, task.end_time);
+
+        const taskSearches = (searchesByTask[tid] || [])
+          .sort((a, b) => parseDate(a.timestamp) - parseDate(b.timestamp))
+          .map(search => {
+            const searchClicks = clicksBySearch[search.search_id] || [];
+            const targetClicked = searchClicks.some(c => c.is_target);
+            const nonTargetCount = searchClicks.filter(c => !c.is_target).length;
+            const names = search.slider_names || [];
+            const values = search.slider_values || [];
+            const sliders = names.map((name, i) => ({
+              name,
+              value: Math.round((values[i] ?? 0) * 1000) / 1000
+            }));
+            const ts = search.timestamp;
+            return {
+              search_id: search.search_id,
+              timestamp: (ts && typeof ts === 'object' && '$date' in ts) ? ts['$date'] : ts,
+              query_text: search.query_text || '',
+              sliders,
+              has_sliders: values.length > 0,
+              target_rank: search.target_rank ?? null,
+              target_rank_status: search.target_rank_status,
+              target_clicked: targetClicked,
+              non_target_click_count: nonTargetCount,
+            };
+          });
+
+        const rankTrajectory = taskSearches
+          .map(s => s.target_rank)
+          .filter(r => r !== null);
+
+        return {
+          task_id: tid,
+          task_idx: task.task_idx,
+          target_path: task.target_path,
+          status: task.status,
+          start_time: (task.start_time && typeof task.start_time === 'object') ? task.start_time['$date'] : task.start_time,
+          end_time: (task.end_time && typeof task.end_time === 'object') ? task.end_time['$date'] : task.end_time,
+          duration_sec: taskDur,
+          searches: taskSearches,
+          search_count: taskSearches.length,
+          rank_trajectory: rankTrajectory,
+          best_rank: rankTrajectory.length ? Math.min(...rankTrajectory) : null,
+          final_rank: rankTrajectory.length ? rankTrajectory[rankTrajectory.length - 1] : null,
+        };
+      });
+
+    return {
+      session_id: sid,
+      dataset: session.dataset || '',
+      start_time: (session.start_time && typeof session.start_time === 'object') ? session.start_time['$date'] : session.start_time,
+      end_time: (session.end_time && typeof session.end_time === 'object') ? session.end_time['$date'] : session.end_time,
+      duration_sec: sessionDur,
+      task_count: sessionTasks.length,
+      tasks: sessionTasks,
+      success_count: sessionTasks.filter(t => t.status === 'success').length,
+      skip_count: sessionTasks.filter(t => t.status === 'skip').length,
+    };
+  });
+}
+
+// ── Rendering ───────────────────────────────────────────────────────────────
+
+async function init() {
+  const data = await buildData();
+  if (!data.length) return;
+  allData = data[0];
+  renderSidebar();
+  renderSessionSummary();
+  selectTask(allData.tasks[0].task_id);
+}
+
+function renderSidebar() {
+  document.getElementById('session-subtitle').textContent =
+    `${allData.dataset.toUpperCase()} · ${new Date(allData.start_time).toLocaleDateString()}`;
+  document.getElementById('task-list').innerHTML = allData.tasks.map(t => {
+    const color = t.status === 'success' ? 'var(--green)' : 'var(--muted)';
+    return `<button class="task-btn" data-id="${t.task_id}" onclick="selectTask('${t.task_id}')">
+      <span class="task-dot" style="background:${color}"></span>
+      <span>Task ${t.task_idx + 1}</span>
+      <span class="task-meta-small">${fmtDur(t.duration_sec)}</span>
+    </button>`;
+  }).join('');
+}
+
+function renderSessionSummary() {
+  const d = allData;
+  const successRate = Math.round((d.success_count / d.task_count) * 100);
+  document.getElementById('session-summary').innerHTML = `
+    <div class="session-bar">
+      <div class="stat"><span class="stat-val">${d.task_count}</span><span class="stat-label">Total tasks</span></div>
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-val" style="color:var(--green)">${d.success_count}</span><span class="stat-label">Success</span></div>
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-val" style="color:var(--muted)">${d.skip_count}</span><span class="stat-label">Skipped</span></div>
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-val" style="color:var(--accent)">${successRate}%</span><span class="stat-label">Success rate</span></div>
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-val">${fmtDur(d.duration_sec)}</span><span class="stat-label">Duration</span></div>
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-val" style="color:var(--muted)">${d.dataset.toUpperCase()}</span><span class="stat-label">Dataset</span></div>
+    </div>`;
+}
+
+function selectTask(taskId) {
+  document.querySelectorAll('.task-btn').forEach(b => b.classList.toggle('active', b.dataset.id === taskId));
+  const task = allData.tasks.find(t => t.task_id === taskId);
+  renderTaskDetail(task);
+}
+
+function getActionLabel(search, prev) {
+  if (!prev) return 'initial search';
+  if (search.query_text !== prev.query_text) return 'query change';
+  if (search.sliders.some((sl, j) => sl.value !== (prev.sliders[j]?.value ?? 0))) return 'slider adjustment';
+  return 'no change';
+}
+
+function renderTaskDetail(task) {
+  if (rankChart) { rankChart.destroy(); rankChart = null; }
+  if (sliderChart) { sliderChart.destroy(); sliderChart = null; }
+
+  const searches = task.searches;
+  const statusBadge = task.status === 'success'
+    ? `<span class="badge badge-green">✓ success</span>`
+    : `<span class="badge badge-muted">⊘ skipped</span>`;
+  const bestRankBadge = task.best_rank != null
+    ? `<span class="badge ${rankBadgeClass(task.best_rank)}">Best rank: #${task.best_rank}</span>`
+    : `<span class="badge badge-muted">No rank data</span>`;
+
+  let lastActionBadge = '';
+  if (searches.length > 0) {
+    const outcomeIdx = task.status === 'success'
+      ? searches.findIndex(s => s.target_clicked)
+      : searches.length - 1;
+    const outcomeSearch = searches[Math.max(outcomeIdx, 0)];
+    const prevSearch = outcomeIdx > 0 ? searches[outcomeIdx - 1] : null;
+    const actionLabel = getActionLabel(outcomeSearch, prevSearch);
+    const badgeClass = task.status === 'success' ? 'badge-green' : 'badge-muted';
+    const icon = task.status === 'success' ? '→ ' : 'last: ';
+    lastActionBadge = `<span class="badge ${badgeClass}">${icon}${actionLabel}</span>`;
+  }
+
+  document.getElementById('task-detail').innerHTML = `
+    <div class="task-header">
+      <img class="target-img" src="${task.target_path}" alt="target" onclick="openModal('${task.target_path}')" onerror="this.style.opacity=0.2">
+      <div class="task-info">
+        <h2>Task ${task.task_idx + 1}</h2>
+        <div class="badges" style="margin-bottom:10px;">
+          ${statusBadge}${bestRankBadge}
+          <span class="badge badge-blue">${task.search_count} searches</span>
+          <span class="badge badge-muted">${fmtDur(task.duration_sec)}</span>
+          ${lastActionBadge}
+        </div>
+      </div>
+    </div>
+    <div class="charts-row">
+      <div class="card">
+        <h3>Target rank over searches</h3>
+        <div style="position:relative; height:180px;"><canvas id="rankChart"></canvas></div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;">
+          <span style="font-size:11px; color:#22c987; display:flex; align-items:center; gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#22c987;display:inline-block;"></span>Top 10</span>
+          <span style="font-size:11px; color:#f5a623; display:flex; align-items:center; gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#f5a623;display:inline-block;"></span>Rank 11–50</span>
+          <span style="font-size:11px; color:#f25c5c; display:flex; align-items:center; gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#f25c5c;display:inline-block;"></span>Rank 50+</span>
+          <span style="font-size:11px; color:#e8eaf6; display:flex; align-items:center; gap:5px;"><span style="width:10px;height:10px;background:#e8eaf6;display:inline-block;transform:rotate(45deg);"></span>Target found</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Slider usage frequency</h3>
+        <div style="position:relative; height:180px;"><canvas id="sliderChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <h3>Search timeline</h3>
+      <div class="timeline" id="timeline"></div>
+    </div>`;
+
+  renderRankChart(task);
+  renderSliderFrequency(task);
+  renderTimeline(task);
+}
+
+function renderRankChart(task) {
+  const searches = task.searches;
+  const labels = searches.map((_, i) => `S${i + 1}`);
+  const ranks = searches.map(s => s.target_rank);
+  const colors = ranks.map(r => r == null ? 'rgba(123,130,166,0.3)' : r <= 10 ? '#22c987' : r <= 50 ? '#f5a623' : '#f25c5c');
+  const actionLabels = searches.map((s, i) => getActionLabel(s, i > 0 ? searches[i-1] : null));
+
+  rankChart = new Chart(document.getElementById('rankChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: ranks,
+        borderColor: '#4f7cff',
+        backgroundColor: 'rgba(79,124,255,0.08)',
+        pointBackgroundColor: colors,
+        pointBorderColor: colors,
+        pointStyle: searches.map(s => s.target_clicked ? 'rectRot' : 'circle'),
+        pointRadius: searches.map(s => s.target_clicked ? 10 : 6),
+        pointHoverRadius: searches.map(s => s.target_clicked ? 12 : 8),
+        tension: 0.3, fill: true, spanGaps: true,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => `Search ${ctx[0].dataIndex + 1}`,
+            label: ctx => {
+              const i = ctx.dataIndex;
+              const lines = [];
+              lines.push(ranks[i] != null ? `Rank: #${ranks[i]}` : 'Rank: not available');
+              lines.push(`Action: ${actionLabels[i]}`);
+              lines.push(`Query: "${searches[i].query_text}"`);
+              if (searches[i].target_clicked) lines.push('✓ Target found here');
+              return lines;
+            }
+          },
+          backgroundColor: '#1a1d27', borderColor: '#2e3250', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: '#7b82a6', padding: 10, displayColors: false,
+        }
+      },
+      scales: {
+        y: {
+          reverse: true,
+          grid: { color: 'rgba(46,50,80,0.8)' },
+          ticks: { color: '#7b82a6', font: { size: 11 } },
+          title: { display: true, text: 'Rank (lower = better)', color: '#7b82a6', font: { size: 11 } }
+        },
+        x: { grid: { color: 'rgba(46,50,80,0.8)' }, ticks: { color: '#7b82a6', font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderSliderFrequency(task) {
+  const searches = task.searches.filter(s => s.has_sliders);
+  if (!searches.length) return;
+  const names = searches[0].sliders.map(sl => sl.name);
+  const paired = names.map((name, ni) => ({
+    name, count: searches.filter(s => s.sliders[ni]?.value !== 0).length
+  })).sort((a, b) => b.count - a.count);
+  const colors = ['#4f7cff','#7c5cfc','#22c987','#f5a623','#f25c5c','#36d9c8','#ff7eb3','#a0e220','#ff9f40','#9966ff'];
+  sliderChart = new Chart(document.getElementById('sliderChart'), {
+    type: 'bar',
+    data: {
+      labels: paired.map(p => p.name),
+      datasets: [{
+        data: paired.map(p => p.count),
+        backgroundColor: paired.map((_, i) => colors[i % colors.length] + 'cc'),
+        borderColor: paired.map((_, i) => colors[i % colors.length]),
+        borderWidth: 1, borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#7b82a6', font: { size: 11 }, stepSize: 1 }, grid: { color: 'rgba(46,50,80,0.8)' }, title: { display: true, text: '# searches', color: '#7b82a6', font: { size: 11 } } },
+        x: { ticks: { color: '#7b82a6', font: { size: 10 }, maxRotation: 45 }, grid: { color: 'rgba(46,50,80,0.8)' } }
+      }
+    }
+  });
+}
+
+function renderTimeline(task) {
+  document.getElementById('timeline').innerHTML = task.searches.map((s, i) => {
+    const prev = i > 0 ? task.searches[i-1] : null;
+    const actionLabel = getActionLabel(s, prev);
+    const actionTag = prev
+      ? `<span class="badge ${actionLabel === 'no change' ? 'badge-muted' : 'badge-blue'}">${actionLabel}</span>`
+      : `<span class="badge badge-muted">initial search</span>`;
+    const successTag = s.target_clicked ? `<span class="badge badge-green">✓ target found here</span>` : '';
+    const rankBadge = s.target_rank != null
+      ? `<span class="badge ${rankBadgeClass(s.target_rank)}">rank #${s.target_rank}</span>`
+      : `<span class="badge badge-muted">no rank</span>`;
+    const nonTargetBadge = s.non_target_click_count > 0
+      ? `<span class="badge badge-amber">${s.non_target_click_count} other click${s.non_target_click_count > 1 ? 's' : ''}</span>` : '';
+    const sliderRows = s.sliders.filter(sl => sl.value !== 0).map(sl => {
+      const pct = Math.round(sl.value * 100);
+      const isNeg = pct < 0;
+      return `<div class="slider-row">
+        <span class="slider-name">${sl.name}</span>
+        <div class="slider-track"><div class="slider-fill" style="width:${Math.abs(pct)}%; background:${isNeg ? '#f25c5c' : 'linear-gradient(90deg,var(--accent),var(--accent2))'}"></div></div>
+        <span class="slider-pct" style="color:${isNeg ? '#f25c5c' : 'var(--muted)'}">${pct}%</span>
+      </div>`;
+    }).join('');
+    const slidersHtml = s.has_sliders
+      ? (sliderRows || `<p class="no-data" style="font-size:12px;">All sliders at zero</p>`)
+      : `<p class="no-data">Text-only search — no sliders set yet</p>`;
+    return `<div class="timeline-item">
+      <div class="step-circle ${s.target_clicked ? 'clicked' : ''}">${i + 1}</div>
+      <div class="search-card" style="${s.target_clicked ? 'border-color:var(--green);' : ''}">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span class="timestamp" style="margin:0;">${new Date(s.timestamp).toTimeString().slice(0,8)}</span>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">${actionTag}${successTag}</div>
+        </div>
+        <div class="search-top">
+          <span class="query">"${s.query_text}"</span>
+          <div class="search-badges">${rankBadge}${nonTargetBadge}</div>
+        </div>
+        <div class="sliders-grid">${slidersHtml}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function rankBadgeClass(rank) {
+  if (rank == null) return 'badge-muted';
+  if (rank <= 10) return 'badge-green';
+  if (rank <= 50) return 'badge-amber';
+  return 'badge-red';
+}
+
+function fmtDur(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+init();
+</script>
+</body>
+</html>
