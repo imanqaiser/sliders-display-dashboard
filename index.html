@@ -188,6 +188,11 @@
         <div class="filter-label"><span>Setup</span></div>
         <div class="pill-row" id="pills-setup"></div>
       </div>
+      <!-- Results pills -->
+      <div class="filter-row">
+        <div class="filter-label"><span>Results pool</span></div>
+        <div class="pill-row" id="pills-results"></div>
+      </div>
       <!-- Tasks slider -->
       <div class="filter-row">
         <div class="filter-label">
@@ -205,20 +210,6 @@
         </div>
         <input type="range" id="sl-concepts" min="0" max="12" step="1" value="0" oninput="onRangeInput('concepts')" class="active-track">
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;"><span>Any</span><span>12</span></div>
-      </div>
-      <!-- Results pills -->
-      <div class="filter-row">
-        <div class="filter-label"><span>Results pool</span></div>
-        <div class="pill-row" id="pills-results"></div>
-      </div>
-      <!-- Task number filter -->
-      <div class="filter-row">
-        <div class="filter-label">
-          <span>Task number</span>
-          <span class="filter-val" id="val-tasknum">Any</span>
-        </div>
-        <input type="range" id="sl-tasknum" min="0" max="10" step="1" value="0" oninput="onRangeInput('tasknum')" class="active-track">
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;"><span>Any</span><span>10</span></div>
       </div>
 
       <div class="filter-actions">
@@ -266,7 +257,6 @@ const filters = {
   vocab: new Set(), setup: new Set(), results: new Set(),
   tasks: 0,      // 0 = any
   concepts: 0,   // 0 = any
-  tasknum: 0,    // 0 = any (1-based when set)
 };
 
 // ══ Modal ══════════════════════════════════════════════════════════════════
@@ -340,7 +330,7 @@ function buildFilterUI() {
   renderPills('pills-vocab',   [...new Set(allSessions.map(s=>s.vocab).filter(Boolean))].sort(),   'vocab');
   renderPills('pills-setup',   [...new Set(allSessions.map(s=>s.setup).filter(Boolean))].sort(),   'setup');
   renderPills('pills-results', [...new Set(allSessions.map(s=>s.numResults).filter(v=>v!=null))].sort((a,b)=>a-b).map(String), 'results');
-  updateRangeTrack('tasks'); updateRangeTrack('concepts'); updateRangeTrack('tasknum');
+  updateRangeTrack('tasks'); updateRangeTrack('concepts');
 }
 
 function renderPills(id, values, key) {
@@ -369,7 +359,7 @@ function syncAllPill(key) {
 function onRangeInput(key) {
   const el = document.getElementById(`sl-${key}`);
   filters[key] = parseInt(el.value);
-  const labelMap = { tasks:'val-tasks', concepts:'val-concepts', tasknum:'val-tasknum' };
+  const labelMap = { tasks:'val-tasks', concepts:'val-concepts' };
   document.getElementById(labelMap[key]).textContent = filters[key] === 0 ? 'Any' : filters[key];
   updateRangeTrack(key);
   applyFilters();
@@ -382,11 +372,10 @@ function updateRangeTrack(key) {
 
 function clearFilters() {
   ['vocab','setup','results'].forEach(k => { filters[k].clear(); });
-  filters.tasks = 0; filters.concepts = 0; filters.tasknum = 0;
+  filters.tasks = 0; filters.concepts = 0;
   document.getElementById('sl-tasks').value    = 0;
   document.getElementById('sl-concepts').value = 0;
-  document.getElementById('sl-tasknum').value  = 0;
-  ['tasks','concepts','tasknum'].forEach(k => { document.getElementById(`val-${k}`).textContent = 'Any'; updateRangeTrack(k); });
+  ['tasks','concepts'].forEach(k => { document.getElementById(`val-${k}`).textContent = 'Any'; updateRangeTrack(k); });
   buildFilterUI();
   applyFilters();
 }
@@ -398,8 +387,6 @@ function applyFilters() {
     if (filters.results.size && !filters.results.has(String(s.numResults))) return false;
     if (filters.tasks    > 0 && s.numTasks    !== filters.tasks)           return false;
     if (filters.concepts > 0 && s.numConcepts !== filters.concepts)        return false;
-    // tasknum filter: only keep sessions that have a task at that index
-    if (filters.tasknum  > 0 && !s.tasks.find(t => t.task_idx === filters.tasknum - 1)) return false;
     return true;
   });
   document.getElementById('match-count').innerHTML =
@@ -443,13 +430,10 @@ function renderSummaryTable() {
   if (!filteredSessions.length) {
     el.innerHTML = `<div class="loading" style="padding-top:60px;">No participants match the current filters.</div>`; return;
   }
-  const taskNumFilter = filters.tasknum > 0 ? filters.tasknum - 1 : null; // 0-based
-  const colTask = taskNumFilter !== null;
-
   el.innerHTML = `
     <div class="summary-header">
       <h2>Participants</h2>
-      <p>${filteredSessions.length} matching${taskNumFilter!==null ? ` · Highlighting Task ${taskNumFilter+1}` : ''}</p>
+      <p>${filteredSessions.length} matching</p>
     </div>
     <table class="summary-table">
       <thead>
@@ -457,7 +441,6 @@ function renderSummaryTable() {
           <th>Participant</th>
           <th>Vocab</th><th>Setup</th><th>Tasks</th><th>Concepts</th><th>Results</th>
           <th>Success rate</th><th>Duration</th>
-          ${colTask ? `<th>Task ${taskNumFilter+1} status</th><th>Task ${taskNumFilter+1} best rank</th>` : ''}
           <th></th>
         </tr>
       </thead>
@@ -465,11 +448,7 @@ function renderSummaryTable() {
         ${filteredSessions.map(s => {
           const rate = Math.round(s.success_count / s.task_count * 100);
           const rateColor = rate>=70?'var(--green)':rate>=40?'var(--amber)':'var(--red)';
-          const taskRow = colTask ? s.tasks.find(t => t.task_idx === taskNumFilter) : null;
-          const taskStatus = taskRow ? taskRow.status : '—';
-          const taskRank   = taskRow ? (taskRow.best_rank != null ? `#${taskRow.best_rank}` : '—') : '—';
-          const taskColor  = taskRow?.status==='success' ? 'var(--green)' : 'var(--muted)';
-          return `<tr onclick="drillIn('${s.session_id}', ${taskNumFilter!==null?taskNumFilter:'null'})">
+          return `<tr onclick="drillIn('${s.session_id}')">
             <td><strong>${s.participant}</strong></td>
             <td>${s.vocab||'—'}</td><td>${s.setup||'—'}</td>
             <td>${s.numTasks??'—'}</td><td>${s.numConcepts??'—'}</td><td>${s.numResults??'—'}</td>
@@ -480,8 +459,7 @@ function renderSummaryTable() {
               </div>
             </td>
             <td>${fmtDur(s.duration_sec)}</td>
-            ${colTask ? `<td style="color:${taskColor}">${taskStatus}</td><td>${taskRank}</td>` : ''}
-            <td><button class="drill-btn" onclick="event.stopPropagation();drillIn('${s.session_id}',${taskNumFilter!==null?taskNumFilter:'null'})">View →</button></td>
+            <td><button class="drill-btn" onclick="event.stopPropagation();drillIn('${s.session_id}')">View →</button></td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -489,7 +467,7 @@ function renderSummaryTable() {
 }
 
 // ══ Drill-in ═══════════════════════════════════════════════════════════════
-function drillIn(sessionId, autoTaskIdx = null) {
+function drillIn(sessionId) {
   activeSession = allSessions.find(s => s.session_id === sessionId);
   activeTaskId  = null;
   renderParticipantList();
@@ -520,16 +498,6 @@ function drillIn(sessionId, autoTaskIdx = null) {
       </div>
     </div>`;
 
-  // Compare banner (task number filter active)
-  const banner = document.getElementById('compare-banner');
-  if (filters.tasknum > 0) {
-    const others = filteredSessions.filter(s => s.session_id !== sessionId);
-    banner.textContent = `Task ${filters.tasknum} filter active — ${others.length} other participant${others.length!==1?'s':''} also match. Use ← back to compare.`;
-    banner.classList.add('visible');
-  } else {
-    banner.classList.remove('visible');
-  }
-
   // Task strip
   document.getElementById('task-strip').innerHTML = activeSession.tasks.map(t => {
     const cls = t.status === 'success' ? 'success' : 'skip';
@@ -539,11 +507,7 @@ function drillIn(sessionId, autoTaskIdx = null) {
     </button>`;
   }).join('');
 
-  // Auto-select task
-  const targetTask = autoTaskIdx !== null
-    ? activeSession.tasks.find(t => t.task_idx === autoTaskIdx) || activeSession.tasks[0]
-    : activeSession.tasks[0];
-  selectTask(targetTask.task_id);
+  selectTask(activeSession.tasks[0].task_id);
 }
 
 function showSummary() {
