@@ -125,6 +125,11 @@ def build_session_data():
             {
                 "session_id": session_id,
                 "dataset": session.get("dataset", ""),
+                # Pilot config fields (Pranavi's schema)
+                "vocab": session.get("vocab", session.get("dataset", "")),
+                "numTasks": session.get("tasks"),
+                "numConcepts": session.get("concepts"),
+                "setup": session.get("setup", ""),
                 "start_time": session["start_time"]["$date"]
                 if isinstance(session["start_time"], dict)
                 else session["start_time"],
