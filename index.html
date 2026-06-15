@@ -181,35 +181,41 @@
       <!-- Vocab -->
       <div class="filter-row">
         <div class="filter-label"><span>Vocab</span></div>
-        <div class="pill-row" id="pills-vocab"></div>
+        <div class="pill-row" id="pills-vocab">
+          <button class="pill pill-all active" onclick="pillAll('vocab',this)">All</button>
+          <button class="pill" onclick="pillToggle('vocab','single',this)">Single</button>
+          <button class="pill" onclick="pillToggle('vocab','multi',this)">Multi</button>
+        </div>
       </div>
       <!-- Setup -->
       <div class="filter-row">
         <div class="filter-label"><span>Setup</span></div>
-        <div class="pill-row" id="pills-setup"></div>
-      </div>
-      <!-- Results pills -->
-      <div class="filter-row">
-        <div class="filter-label"><span>Results pool</span></div>
-        <div class="pill-row" id="pills-results"></div>
-      </div>
-      <!-- Tasks slider -->
-      <div class="filter-row">
-        <div class="filter-label">
-          <span>Tasks (count)</span>
-          <span class="filter-val" id="val-tasks">Any</span>
+        <div class="pill-row" id="pills-setup">
+          <button class="pill pill-all active" onclick="pillAll('setup',this)">All</button>
+          <button class="pill" onclick="pillToggle('setup','control',this)">Control</button>
+          <button class="pill" onclick="pillToggle('setup','sliders',this)">Sliders</button>
         </div>
-        <input type="range" id="sl-tasks" min="0" max="10" step="1" value="0" oninput="onRangeInput('tasks')" class="active-track">
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;"><span>Any</span><span>10</span></div>
       </div>
-      <!-- Concepts slider -->
+
+      <!-- Tasks pills -->
       <div class="filter-row">
-        <div class="filter-label">
-          <span>Sliders / Concepts</span>
-          <span class="filter-val" id="val-concepts">Any</span>
+        <div class="filter-label"><span>Tasks</span></div>
+        <div class="pill-row" id="pills-tasks">
+          <button class="pill pill-all active" onclick="pillAll('tasks',this)">All</button>
+          <button class="pill" onclick="pillToggle('tasks','5',this)">5</button>
+          <button class="pill" onclick="pillToggle('tasks','10',this)">10</button>
         </div>
-        <input type="range" id="sl-concepts" min="0" max="12" step="1" value="0" oninput="onRangeInput('concepts')" class="active-track">
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;"><span>Any</span><span>12</span></div>
+      </div>
+      <!-- Concepts pills -->
+      <div class="filter-row">
+        <div class="filter-label"><span>Sliders / Concepts</span></div>
+        <div class="pill-row" id="pills-concepts">
+          <button class="pill pill-all active" onclick="pillAll('concepts',this)">All</button>
+          <button class="pill" onclick="pillToggle('concepts','6',this)">6</button>
+          <button class="pill" onclick="pillToggle('concepts','8',this)">8</button>
+          <button class="pill" onclick="pillToggle('concepts','10',this)">10</button>
+          <button class="pill" onclick="pillToggle('concepts','12',this)">12</button>
+        </div>
       </div>
 
       <div class="filter-actions">
@@ -254,9 +260,8 @@ let activeTaskId  = null;
 let rankChart = null, sliderChart = null;
 
 const filters = {
-  vocab: new Set(), setup: new Set(), results: new Set(),
-  tasks: 0,      // 0 = any
-  concepts: 0,   // 0 = any
+  vocab: new Set(), setup: new Set(),
+  tasks: new Set(), concepts: new Set(),
 };
 
 // ══ Modal ══════════════════════════════════════════════════════════════════
@@ -327,66 +332,38 @@ async function buildData() {
 
 // ══ Filter UI ══════════════════════════════════════════════════════════════
 function buildFilterUI() {
-  renderPills('pills-vocab',   [...new Set(allSessions.map(s=>s.vocab).filter(Boolean))].sort(),   'vocab');
-  renderPills('pills-setup',   [...new Set(allSessions.map(s=>s.setup).filter(Boolean))].sort(),   'setup');
-  renderPills('pills-results', [...new Set(allSessions.map(s=>s.numResults).filter(v=>v!=null))].sort((a,b)=>a-b).map(String), 'results');
-  updateRangeTrack('tasks'); updateRangeTrack('concepts');
+  // All pill groups are hardcoded in HTML — nothing to render dynamically
 }
 
-function renderPills(id, values, key) {
-  document.getElementById(id).innerHTML =
-    `<button class="pill all ${filters[key].size===0?'active':''}" onclick="setAllPill('${key}',this)">All</button>` +
-    values.map(v => `<button class="pill ${filters[key].has(v)?'active':''}" onclick="togglePill('${key}','${v}',this)">${v}</button>`).join('');
-}
-
-function togglePill(key, val, el) {
-  if (filters[key].has(val)) { filters[key].delete(val); el.classList.remove('active'); }
-  else { filters[key].add(val); el.classList.add('active'); }
-  syncAllPill(key);
+function pillToggle(key, val, el) {
+  filters[key].has(val) ? filters[key].delete(val) : filters[key].add(val);
+  el.classList.toggle('active', filters[key].has(val));
+  document.querySelector(`#pills-${key} .pill-all`).classList.toggle('active', filters[key].size === 0);
   applyFilters();
 }
-function setAllPill(key, el) {
+function pillAll(key, el) {
   filters[key].clear();
   document.querySelectorAll(`#pills-${key} .pill`).forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   applyFilters();
 }
-function syncAllPill(key) {
-  const pills = document.querySelectorAll(`#pills-${key} .pill`);
-  pills[0].classList.toggle('active', filters[key].size===0);
-}
 
-function onRangeInput(key) {
-  const el = document.getElementById(`sl-${key}`);
-  filters[key] = parseInt(el.value);
-  const labelMap = { tasks:'val-tasks', concepts:'val-concepts' };
-  document.getElementById(labelMap[key]).textContent = filters[key] === 0 ? 'Any' : filters[key];
-  updateRangeTrack(key);
-  applyFilters();
-}
-function updateRangeTrack(key) {
-  const el = document.getElementById(`sl-${key}`);
-  const pct = (el.value / el.max) * 100;
-  el.style.setProperty('--pct', pct + '%');
-}
 
 function clearFilters() {
-  ['vocab','setup','results'].forEach(k => { filters[k].clear(); });
-  filters.tasks = 0; filters.concepts = 0;
-  document.getElementById('sl-tasks').value    = 0;
-  document.getElementById('sl-concepts').value = 0;
-  ['tasks','concepts'].forEach(k => { document.getElementById(`val-${k}`).textContent = 'Any'; updateRangeTrack(k); });
-  buildFilterUI();
+  ['vocab','setup','tasks','concepts'].forEach(k => {
+    filters[k].clear();
+    document.querySelectorAll(`#pills-${k} .pill`).forEach(p => p.classList.remove('active'));
+    document.querySelector(`#pills-${k} .pill-all`).classList.add('active');
+  });
   applyFilters();
 }
 
 function applyFilters() {
   filteredSessions = allSessions.filter(s => {
-    if (filters.vocab.size   && !filters.vocab.has(s.vocab))              return false;
-    if (filters.setup.size   && !filters.setup.has(s.setup))              return false;
-    if (filters.results.size && !filters.results.has(String(s.numResults))) return false;
-    if (filters.tasks    > 0 && s.numTasks    !== filters.tasks)           return false;
-    if (filters.concepts > 0 && s.numConcepts !== filters.concepts)        return false;
+    if (filters.vocab.size    && !filters.vocab.has(s.vocab))                  return false;
+    if (filters.setup.size    && !filters.setup.has(s.setup))                  return false;
+    if (filters.tasks.size    && !filters.tasks.has(String(s.numTasks)))       return false;
+    if (filters.concepts.size && !filters.concepts.has(String(s.numConcepts))) return false;
     return true;
   });
   document.getElementById('match-count').innerHTML =
