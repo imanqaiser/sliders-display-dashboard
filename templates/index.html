@@ -21,6 +21,33 @@
   .sidebar-header { padding: 18px 18px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .sidebar-header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
   .sidebar-header p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .nav-row { display: flex; gap: 6px; margin-top: 12px; }
+  .nav-btn {
+    flex: 1; font-size: 11px; font-weight: 600; padding: 7px 0; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface2); color: var(--muted);
+    cursor: pointer; transition: all 0.12s;
+  }
+  .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .nav-btn.active { background: rgba(79,124,255,0.15); border-color: var(--accent); color: var(--accent); }
+
+  .likert-row { padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .likert-row:last-child { border-bottom: none; }
+  .likert-question { font-size: 13px; color: var(--text); margin-bottom: 10px; }
+  .likert-scale { display: flex; align-items: center; gap: 10px; }
+  .likert-end-label { font-size: 10px; color: var(--muted); flex-shrink: 0; width: 78px; }
+  .likert-end-label:last-child { text-align: right; }
+  .likert-points { display: flex; flex: 1; justify-content: space-between; }
+  .likert-point { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .likert-dot {
+    width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--surface2); display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: transparent;
+  }
+  .likert-point.selected .likert-dot {
+    background: linear-gradient(135deg,var(--accent),var(--accent2)); border-color: var(--accent);
+    color: #fff; box-shadow: 0 0 0 3px rgba(79,124,255,0.2);
+  }
+  .likert-num { font-size: 9px; color: var(--muted); }
 
   /* ── Filters ── */
   .filters { padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -175,6 +202,10 @@
     <div class="sidebar-header">
       <h1>Sliders Dashboard</h1>
       <p id="hdr-sub">Loading…</p>
+      <div class="nav-row">
+        <button class="nav-btn active" id="nav-participants" onclick="showSummary()">Participants</button>
+        <button class="nav-btn" id="nav-survey" onclick="showSurveyResults()">Survey Results</button>
+      </div>
     </div>
 
     <div class="filters">
@@ -244,6 +275,8 @@
       <div class="task-strip" id="task-strip"></div>
       <div id="task-detail"></div>
     </div>
+    <!-- Survey results (aggregate) view -->
+    <div id="view-survey" style="display:none;"></div>
   </main>
 </div>
 
@@ -275,13 +308,15 @@ function parseDate(v) { if (v && typeof v === 'object' && '$date' in v) v = v['$
 function durSec(a, b) { return Math.round((parseDate(b) - parseDate(a)) / 1000); }
 
 async function buildData() {
-  const [sessions, tasks, searches, clicks] = await Promise.all([
-    loadJSON('static/data/sessions.json'), loadJSON('static/data/tasks.json'),
-    loadJSON('static/data/searches.json'), loadJSON('static/data/clicks.json'),
+  const [sessions, tasks, searches, clicks, surveys] = await Promise.all([
+    loadJSON('/api/raw/sessions'), loadJSON('/api/raw/tasks'),
+    loadJSON('/api/raw/searches'), loadJSON('/api/raw/clicks'),
+    loadJSON('/api/raw/surveys'),
   ]);
-  const sByTask = {}, cBySearch = {};
+  const sByTask = {}, cBySearch = {}, surveyBySession = {};
   searches.forEach(s => { sByTask[s.task_id] = sByTask[s.task_id] || []; sByTask[s.task_id].push(s); });
   clicks.forEach(c => { cBySearch[c.search_id] = cBySearch[c.search_id] || []; cBySearch[c.search_id].push(c); });
+  surveys.forEach(sv => { surveyBySession[sv.session_id] = sv; });
 
   return sessions.map(sess => {
     const sid = sess.session_id;
@@ -289,14 +324,14 @@ async function buildData() {
       const tid = task.task_id;
       const taskSearches = (sByTask[tid] || []).sort((a,b) => parseDate(a.timestamp)-parseDate(b.timestamp)).map(srch => {
         const sc = cBySearch[srch.search_id] || [];
-        const names = srch.slider_names || [], vals = srch.slider_values || [];
+        const rawSliders = srch.sliders || [];
         const ts = srch.timestamp;
         return {
           search_id: srch.search_id,
           timestamp: (ts && typeof ts==='object' && '$date' in ts) ? ts['$date'] : ts,
           query_text: srch.query_text || '',
-          sliders: names.map((n,i) => ({ name: n, value: Math.round((vals[i]??0)*1000)/1000 })),
-          has_sliders: vals.length > 0,
+          sliders: rawSliders.map(sl => ({ name: sl.name, value: Math.round((sl.value??0)*1000)/1000 })),
+          has_sliders: rawSliders.length > 0,
           target_rank: srch.target_rank ?? null,
           target_clicked: sc.some(c => c.is_target),
           non_target_click_count: sc.filter(c => !c.is_target).length,
@@ -326,6 +361,7 @@ async function buildData() {
       tasks: sessionTasks,
       success_count: sessionTasks.filter(t => t.status==='success').length,
       skip_count:    sessionTasks.filter(t => t.status==='skip').length,
+      survey: surveyBySession[sid] || null,
     };
   });
 }
@@ -372,6 +408,7 @@ function applyFilters() {
     `${filteredSessions.length} participant${filteredSessions.length!==1?'s':''} shown`;
   renderParticipantList();
   renderSummaryTable();
+  if (document.getElementById('view-survey').style.display !== 'none') renderSurveyResults();
 }
 
 // ══ Participant list (sidebar) ══════════════════════════════════════════════
@@ -450,7 +487,10 @@ function drillIn(sessionId) {
   renderParticipantList();
 
   document.getElementById('view-summary').style.display = 'none';
+  document.getElementById('view-survey').style.display = 'none';
   document.getElementById('view-drill').classList.add('visible');
+  document.getElementById('nav-participants').classList.add('active');
+  document.getElementById('nav-survey').classList.remove('active');
 
   // Session bar
   const d = activeSession;
@@ -476,13 +516,15 @@ function drillIn(sessionId) {
     </div>`;
 
   // Task strip
-  document.getElementById('task-strip').innerHTML = activeSession.tasks.map(t => {
+  const taskChips = activeSession.tasks.map(t => {
     const cls = t.status === 'success' ? 'success' : 'skip';
     const dot  = t.status === 'success' ? '✓' : '⊘';
     return `<button class="task-chip ${cls}" data-id="${t.task_id}" onclick="selectTask('${t.task_id}')">
       ${dot} Task ${t.task_idx+1}
     </button>`;
   }).join('');
+  const surveyChip = `<button class="task-chip" data-id="__survey__" onclick="selectSurvey()">📋 Survey</button>`;
+  document.getElementById('task-strip').innerHTML = taskChips + surveyChip;
 
   selectTask(activeSession.tasks[0].task_id);
 }
@@ -491,7 +533,21 @@ function showSummary() {
   activeSession = null; activeTaskId = null;
   document.getElementById('view-summary').style.display = '';
   document.getElementById('view-drill').classList.remove('visible');
+  document.getElementById('view-survey').style.display = 'none';
+  document.getElementById('nav-participants').classList.add('active');
+  document.getElementById('nav-survey').classList.remove('active');
   renderParticipantList();
+}
+
+function showSurveyResults() {
+  activeSession = null; activeTaskId = null;
+  document.getElementById('view-summary').style.display = 'none';
+  document.getElementById('view-drill').classList.remove('visible');
+  document.getElementById('view-survey').style.display = '';
+  document.getElementById('nav-participants').classList.remove('active');
+  document.getElementById('nav-survey').classList.add('active');
+  renderParticipantList();
+  renderSurveyResults();
 }
 
 function selectTask(taskId) {
@@ -646,6 +702,169 @@ function actionLabel(s, prev) {
 }
 function rankCls(r) { return r==null?'badge-muted':r<=10?'badge-green':r<=50?'badge-amber':'badge-red'; }
 function fmtDur(sec) { const m=Math.floor(sec/60),s=sec%60; return m>0?`${m}m ${s}s`:`${s}s`; }
+
+// ══ Survey (NASA-TLX + SUS) ══════════════════════════════════════════════════
+const TLX_FIELDS = [
+  { key: 'mental',      label: 'Mental Demand',  full: 'How mentally demanding was the task?' },
+  { key: 'temporal',    label: 'Pace / Rush',    full: 'How hurried or rushed was the pace of the task?' },
+  { key: 'performance', label: 'Performance',    full: 'How successful were you in accomplishing what you were asked to do? (Perfect–Failure)' },
+  { key: 'effort',      label: 'Effort',         full: 'How hard did you have to work to accomplish your level of performance?' },
+  { key: 'frustration', label: 'Frustration',    full: 'How insecure, discouraged, irritated, stressed, and annoyed were you?' },
+];
+const SUS_FIELDS = [
+  { key: 'sus1',  label: 'Would use frequently',        full: 'I think that I would like to use this system frequently.' },
+  { key: 'sus2',  label: 'Unnecessarily complex',        full: 'I found the system unnecessarily complex.' },
+  { key: 'sus3',  label: 'Easy to use',                  full: 'I thought the system was easy to use.' },
+  { key: 'sus4',  label: 'Needs technical support',      full: 'I think that I would need the support of a technical person to be able to use this system.' },
+  { key: 'sus5',  label: 'Functions well integrated',    full: 'I found the various functions in this system were well integrated.' },
+  { key: 'sus6',  label: 'Too much inconsistency',       full: 'I thought there was too much inconsistency in this system.' },
+  { key: 'sus7',  label: 'Quick to learn',                full: 'I would imagine that most people would learn to use this system very quickly.' },
+  { key: 'sus8',  label: 'Cumbersome to use',             full: 'I found the system very cumbersome to use.' },
+  { key: 'sus9',  label: 'Felt confident',                full: 'I felt very confident using the system.' },
+  { key: 'sus10', label: 'Needed to learn a lot first',   full: 'I needed to learn a lot of things before I could get going with this system.' },
+];
+
+function fieldAverage(sessions, group, key) {
+  const vals = sessions
+    .map(s => s.survey?.[group]?.[key])
+    .filter(v => v !== null && v !== undefined && v !== '');
+  if (!vals.length) return null;
+  return vals.reduce((a,b) => a+b, 0) / vals.length;
+}
+
+function renderScoreBar(label, value, maxValue, fullText) {
+  const pct = value==null ? 0 : Math.round((value/maxValue)*100);
+  const display = value==null ? '—' : value.toFixed(2);
+  const titleAttr = fullText ? ` title="${fullText.replace(/"/g,'&quot;')}"` : '';
+  return `<div class="slider-row"${titleAttr}>
+    <span class="slider-name">${label}</span>
+    <div class="slider-track"><div class="slider-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
+    <span class="slider-pct" style="color:var(--muted)">${display}</span>
+  </div>`;
+}
+
+function renderLikertRow(questionText, value, scaleMax, lowLabel, highLabel) {
+  const points = Array.from({length: scaleMax}, (_,i) => i+1);
+  const dots = points.map(p => {
+    const isSelected = value === p;
+    return `<div class="likert-point ${isSelected?'selected':''}">
+      <div class="likert-dot">${isSelected ? p : ''}</div>
+      <span class="likert-num">${p}</span>
+    </div>`;
+  }).join('');
+  return `<div class="likert-row">
+    <p class="likert-question">${questionText}</p>
+    <div class="likert-scale">
+      <span class="likert-end-label">${lowLabel}</span>
+      <div class="likert-points">${dots}</div>
+      <span class="likert-end-label">${highLabel}</span>
+    </div>
+    ${value==null ? '<p class="no-data" style="font-size:11px;">No response</p>' : ''}
+  </div>`;
+}
+
+const FREQ_LEVELS = ['Never', 'Rarely', 'Sometimes', 'Often', 'Very Frequently'];
+function renderLikertFreqRow(value) {
+  const dots = FREQ_LEVELS.map(level => {
+    const isSelected = value === level;
+    return `<div class="likert-point ${isSelected?'selected':''}">
+      <div class="likert-dot" style="width:auto;height:22px;padding:0 8px;border-radius:11px;">${level}</div>
+    </div>`;
+  }).join('');
+  return `<div class="likert-row" style="border-bottom:none;">
+    <p class="likert-question">How frequently do you use image-based search tools (e.g., Google Images, Google Lens, Pinterest)?</p>
+    <div class="likert-points" style="justify-content:flex-start;gap:10px;">${dots}</div>
+    ${value==null ? '<p class="no-data" style="font-size:11px;">No response</p>' : ''}
+  </div>`;
+}
+
+// -- Aggregate view (top-level "Survey Results" nav) -------------------------
+function renderSurveyResults() {
+  const el = document.getElementById('view-survey');
+  const withSurvey = filteredSessions.filter(s => s.survey);
+  if (!withSurvey.length) {
+    el.innerHTML = `<div class="loading">No survey responses match the current filters.</div>`;
+    return;
+  }
+
+  const tlxRows = TLX_FIELDS.map(f => renderScoreBar(f.label, fieldAverage(withSurvey,'workload',f.key), 7, f.full)).join('');
+  const susRows = SUS_FIELDS.map(f => renderScoreBar(f.label, fieldAverage(withSurvey,'usability',f.key), 5, f.full)).join('');
+
+  el.innerHTML = `
+    <div class="summary-header">
+      <h2>Survey Results</h2>
+      <p>${withSurvey.length} participant${withSurvey.length!==1?'s':''} with completed surveys (averages, current filters)</p>
+    </div>
+    <div class="charts-row">
+      <div class="card">
+        <h3>NASA-TLX (avg, scale 1–7)</h3>
+        <div class="sliders-grid" style="margin-top:8px;">${tlxRows}</div>
+      </div>
+      <div class="card">
+        <h3>SUS (avg, scale 1–5)</h3>
+        <div class="sliders-grid" style="margin-top:8px;">${susRows}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <h3>Individual responses</h3>
+      <table class="summary-table">
+        <thead><tr><th>Participant</th><th>Mental</th><th>Temporal</th><th>Perf.</th><th>Effort</th><th>Frust.</th><th>SUS avg</th><th></th></tr></thead>
+        <tbody>
+          ${withSurvey.map(s => {
+            const w = s.survey.workload || {};
+            const susAvg = SUS_FIELDS.reduce((sum,f)=>sum+(w!==undefined && s.survey.usability?.[f.key]!=null ? s.survey.usability[f.key] : 0),0) / SUS_FIELDS.length;
+            return `<tr>
+              <td><strong>${s.participant}</strong></td>
+              <td>${w.mental ?? '—'}</td><td>${w.temporal ?? '—'}</td><td>${w.performance ?? '—'}</td>
+              <td>${w.effort ?? '—'}</td><td>${w.frustration ?? '—'}</td>
+              <td>${susAvg.toFixed(1)}</td>
+              <td><button class="drill-btn" onclick="drillIn('${s.session_id}');selectSurvey();">View →</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// -- Per-participant survey tab (inside drill-in view) ------------------------
+function selectSurvey() {
+  activeTaskId = '__survey__';
+  document.querySelectorAll('.task-chip').forEach(b => b.classList.toggle('active', b.dataset.id === '__survey__'));
+  if (rankChart)   { rankChart.destroy();   rankChart   = null; }
+  if (sliderChart) { sliderChart.destroy(); sliderChart = null; }
+
+  const survey = activeSession.survey;
+  if (!survey) {
+    document.getElementById('task-detail').innerHTML = `<div class="card"><p class="no-data">No survey response for this participant.</p></div>`;
+    return;
+  }
+  const w = survey.workload || {}, u = survey.usability || {}, ot = survey.open_text || {};
+  const tlxRows = TLX_FIELDS.map(f => renderLikertRow(f.full, w[f.key] ?? null, 7, 'Very Low', 'Very High')).join('');
+  const susRows = SUS_FIELDS.map(f => renderLikertRow(f.full, u[f.key] ?? null, 5, 'Strongly Disagree', 'Strongly Agree')).join('');
+  const freqRow = renderLikertFreqRow(survey.frequency);
+
+  document.getElementById('task-detail').innerHTML = `
+    <div class="card" style="margin-bottom:24px;">
+      <h3>NASA-TLX</h3>
+      ${tlxRows}
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <h3>System Usability Scale</h3>
+      ${susRows}
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <h3>Background</h3>
+      ${freqRow}
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <h3>Pilot feedback</h3>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div><p class="likert-question" style="margin-bottom:4px;">Were there any parts of the study where you felt confused or unsure what to do? If so, please describe.</p><p style="font-size:13px;color:var(--text);">${ot.confused || '<span class="no-data">No response</span>'}</p></div>
+        <div><p class="likert-question" style="margin-bottom:4px;">Were any aspects of the experiment too difficult or frustrating? If so, what would have made them easier?</p><p style="font-size:13px;color:var(--text);">${ot.difficult || '<span class="no-data">No response</span>'}</p></div>
+        <div><p class="likert-question" style="margin-bottom:4px;">Do you have any other feedback or suggestions for improving the study?</p><p style="font-size:13px;color:var(--text);">${ot.feedback || '<span class="no-data">No response</span>'}</p></div>
+      </div>
+    </div>`;
+}
 
 // ══ Init ═══════════════════════════════════════════════════════════════════
 async function init() {

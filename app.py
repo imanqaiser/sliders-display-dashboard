@@ -1,152 +1,83 @@
-import json
 import os
-from datetime import datetime, timezone
-from flask import Flask, render_template, jsonify, request
+from datetime import datetime
+from flask import Flask, render_template, jsonify
+from bson import ObjectId
+from db import get_db
 
 app = Flask(__name__)
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+NASA_TLX_FIELDS = ["mental", "temporal", "performance", "effort", "frustration"]
+SUS_FIELDS = [f"sus{i}" for i in range(1, 11)]
 
 
-def load_json(filename):
-    path = os.path.join(DATA_DIR, filename)
-    with open(path) as f:
-        return json.load(f)
+def clean(doc):
+    """
+    Mongo documents contain ObjectId and datetime objects that don't
+    serialize the way the frontend expects by default. This walks a doc
+    (or list of docs) and:
+      - converts ObjectId -> str
+      - drops the internal _id field (not used by the frontend)
+      - converts datetime -> ISO 8601 string, matching the format the
+        old static JSON files used (e.g. "2026-06-15T15:03:34.703+00:00")
+    """
+    if isinstance(doc, list):
+        return [clean(d) for d in doc]
+    if isinstance(doc, dict):
+        out = {}
+        for k, v in doc.items():
+            if k == "_id":
+                continue
+            if isinstance(v, ObjectId):
+                out[k] = str(v)
+            elif isinstance(v, datetime):
+                out[k] = v.isoformat()
+            elif isinstance(v, (dict, list)):
+                out[k] = clean(v)
+            else:
+                out[k] = v
+        return out
+    return doc
 
 
-def parse_date(val):
-    if isinstance(val, dict) and "$date" in val:
-        val = val["$date"]
-    if val is None:
-        return None
-    if val.endswith("Z"):
-        val = val[:-1] + "+00:00"
-    return datetime.fromisoformat(val)
+def is_complete_survey(survey):
+    """
+    A survey counts as fully completed if every NASA-TLX subscale and
+    every SUS item has a non-null, non-empty answer.
+    """
+    if not survey:
+        return False
+    workload = survey.get("workload") or {}
+    usability = survey.get("usability") or {}
+
+    for field in NASA_TLX_FIELDS:
+        val = workload.get(field)
+        if val is None or val == "":
+            return False
+    for field in SUS_FIELDS:
+        val = usability.get(field)
+        if val is None or val == "":
+            return False
+    return True
 
 
-def build_session_data():
-    sessions = load_json("sessions.json")
-    tasks = load_json("tasks.json")
-    searches = load_json("searches.json")
-    clicks = load_json("clicks.json")
+def get_real_session_ids(db):
+    """
+    A session counts as a real participant (not a test/dev session) if:
+      1. session.user_type == "pilot"
+      2. there's a matching survey for that session_id, fully completed
+         (all NASA-TLX + SUS fields answered)
+    Returns a set of qualifying session_ids.
+    """
+    pilot_session_ids = {
+        s["session_id"]
+        for s in db.sessions.find({"user_type": "pilot"}, {"session_id": 1})
+    }
+    if not pilot_session_ids:
+        return set()
 
-    # Index searches by task_id
-    searches_by_task = {}
-    for s in searches:
-        tid = s["task_id"]
-        searches_by_task.setdefault(tid, []).append(s)
-
-    # Index clicks by search_id
-    clicks_by_search = {}
-    for c in clicks:
-        sid = c["search_id"]
-        clicks_by_search.setdefault(sid, []).append(c)
-
-    result = []
-    for session in sessions:
-        session_id = session["session_id"]
-        session_start = parse_date(session["start_time"])
-        session_end = parse_date(session["end_time"])
-        session_dur = round((session_end - session_start).total_seconds())
-
-        session_tasks = [t for t in tasks if t["session_id"] == session_id]
-        session_tasks.sort(key=lambda t: t["task_idx"])
-
-        enriched_tasks = []
-        for task in session_tasks:
-            task_id = task["task_id"]
-            task_start = parse_date(task["start_time"])
-            task_end = parse_date(task["end_time"])
-            task_dur = round((task_end - task_start).total_seconds())
-
-            task_searches = searches_by_task.get(task_id, [])
-            task_searches.sort(key=lambda s: parse_date(s["timestamp"]))
-
-            enriched_searches = []
-            for search in task_searches:
-                search_id = search["search_id"]
-                search_clicks = clicks_by_search.get(search_id, [])
-                target_clicked = any(c["is_target"] for c in search_clicks)
-                non_target_clicks = [c for c in search_clicks if not c["is_target"]]
-
-                sliders = []
-                names = search.get("slider_names", [])
-                values = search.get("slider_values", [])
-                for i, name in enumerate(names):
-                    val = values[i] if i < len(values) else 0.0
-                    sliders.append({"name": name, "value": round(val, 3)})
-
-                enriched_searches.append(
-                    {
-                        "search_id": search_id,
-                        "timestamp": search["timestamp"]["$date"]
-                        if isinstance(search["timestamp"], dict)
-                        else search["timestamp"],
-                        "query_text": search.get("query_text", ""),
-                        "sliders": sliders,
-                        "has_sliders": len(values) > 0,
-                        "target_rank": search.get("target_rank"),
-                        "target_rank_status": search.get("target_rank_status"),
-                        "target_clicked": target_clicked,
-                        "non_target_click_count": len(non_target_clicks),
-                        "result_count": len(search.get("results", [])),
-                    }
-                )
-
-            # Rank trajectory across searches
-            rank_trajectory = [
-                s["target_rank"]
-                for s in enriched_searches
-                if s["target_rank"] is not None
-            ]
-
-            enriched_tasks.append(
-                {
-                    "task_id": task_id,
-                    "task_idx": task["task_idx"],
-                    "target_path": task["target_path"],
-                    "status": task["status"],
-                    "start_time": task["start_time"]["$date"]
-                    if isinstance(task["start_time"], dict)
-                    else task["start_time"],
-                    "end_time": task["end_time"]["$date"]
-                    if isinstance(task["end_time"], dict)
-                    else task["end_time"],
-                    "duration_sec": task_dur,
-                    "searches": enriched_searches,
-                    "search_count": len(enriched_searches),
-                    "rank_trajectory": rank_trajectory,
-                    "final_rank": rank_trajectory[-1] if rank_trajectory else None,
-                    "best_rank": min(rank_trajectory) if rank_trajectory else None,
-                }
-            )
-
-        result.append(
-            {
-                "session_id": session_id,
-                "dataset": session.get("dataset", ""),
-                # Pilot config fields (Pranavi's schema)
-                "vocab": session.get("vocab", session.get("dataset", "")),
-                "numTasks": session.get("tasks"),
-                "numConcepts": session.get("concepts"),
-                "setup": session.get("setup", ""),
-                "start_time": session["start_time"]["$date"]
-                if isinstance(session["start_time"], dict)
-                else session["start_time"],
-                "end_time": session["end_time"]["$date"]
-                if isinstance(session["end_time"], dict)
-                else session["end_time"],
-                "duration_sec": session_dur,
-                "task_count": len(enriched_tasks),
-                "tasks": enriched_tasks,
-                "success_count": sum(
-                    1 for t in enriched_tasks if t["status"] == "success"
-                ),
-                "skip_count": sum(1 for t in enriched_tasks if t["status"] == "skip"),
-            }
-        )
-
-    return result
+    surveys = db.surveys.find({"session_id": {"$in": list(pilot_session_ids)}})
+    real_ids = {s["session_id"] for s in surveys if is_complete_survey(s)}
+    return real_ids
 
 
 @app.route("/")
@@ -154,37 +85,81 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/api/sessions")
-def api_sessions():
-    data = build_session_data()
-    # Strip searches from summary to keep it light
-    summary = []
-    for s in data:
-        s_copy = dict(s)
-        s_copy["tasks"] = [
-            {k: v for k, v in t.items() if k != "searches"} for t in s["tasks"]
-        ]
-        summary.append(s_copy)
-    return jsonify(summary)
+# -- Raw collection dumps -----------------------------------------------
+# These mirror the old static/data/*.json files. The frontend's
+# buildData() function in index.html does all the joining client-side,
+# so we keep that logic untouched and just swap the data source.
+#
+# All four collections below are filtered down to real participants only:
+# user_type == "pilot" AND a fully-completed survey exists for that session.
 
 
-@app.route("/api/session/<session_id>")
-def api_session(session_id):
-    data = build_session_data()
-    for s in data:
-        if s["session_id"] == session_id:
-            return jsonify(s)
-    return jsonify({"error": "not found"}), 404
+@app.route("/api/raw/sessions")
+def raw_sessions():
+    db = get_db()
+    real_ids = get_real_session_ids(db)
+    docs = list(db.sessions.find({"session_id": {"$in": list(real_ids)}}))
+    return jsonify(clean(docs))
 
 
-@app.route("/api/task/<task_id>")
-def api_task(task_id):
-    data = build_session_data()
-    for session in data:
-        for task in session["tasks"]:
-            if task["task_id"] == task_id:
-                return jsonify(task)
-    return jsonify({"error": "not found"}), 404
+@app.route("/api/raw/tasks")
+def raw_tasks():
+    db = get_db()
+    real_ids = get_real_session_ids(db)
+    docs = list(db.tasks.find({"session_id": {"$in": list(real_ids)}}))
+    return jsonify(clean(docs))
+
+
+@app.route("/api/raw/searches")
+def raw_searches():
+    db = get_db()
+    real_ids = get_real_session_ids(db)
+    task_ids = {
+        t["task_id"]
+        for t in db.tasks.find({"session_id": {"$in": list(real_ids)}}, {"task_id": 1})
+    }
+    docs = list(db.searches.find({"task_id": {"$in": list(task_ids)}}))
+    return jsonify(clean(docs))
+
+
+@app.route("/api/raw/clicks")
+def raw_clicks():
+    db = get_db()
+    real_ids = get_real_session_ids(db)
+    task_ids = {
+        t["task_id"]
+        for t in db.tasks.find({"session_id": {"$in": list(real_ids)}}, {"task_id": 1})
+    }
+    search_ids = {
+        s["search_id"]
+        for s in db.searches.find(
+            {"task_id": {"$in": list(task_ids)}}, {"search_id": 1}
+        )
+    }
+    docs = list(db.clicks.find({"search_id": {"$in": list(search_ids)}}))
+    return jsonify(clean(docs))
+
+
+@app.route("/api/raw/surveys")
+def raw_surveys():
+    db = get_db()
+    real_ids = get_real_session_ids(db)
+    docs = list(db.surveys.find({"session_id": {"$in": list(real_ids)}}))
+    return jsonify(clean(docs))
+
+
+# -- Survey lookup by session --------------------------------------------
+# Convenience endpoint: one survey response per session_id (per the data
+# seen so far, sessions and surveys appear to be 1:1 via session_id).
+
+
+@app.route("/api/survey/<session_id>")
+def survey_for_session(session_id):
+    db = get_db()
+    doc = db.surveys.find_one({"session_id": session_id})
+    if doc is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(clean(doc))
 
 
 if __name__ == "__main__":
