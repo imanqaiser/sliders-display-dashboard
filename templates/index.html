@@ -48,6 +48,9 @@
     color: #fff; box-shadow: 0 0 0 3px rgba(79,124,255,0.2);
   }
   .likert-num { font-size: 9px; color: var(--muted); }
+  .conditions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .condition-block { display: flex; flex-direction: column; gap: 0; }
+  .condition-label { font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
 
   /* ── Filters ── */
   .filters { padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -220,11 +223,11 @@
       </div>
       <!-- Setup -->
       <div class="filter-row">
-        <div class="filter-label"><span>Setup</span></div>
-        <div class="pill-row" id="pills-setup">
-          <button class="pill pill-all active" onclick="pillAll('setup',this)">All</button>
-          <button class="pill" onclick="pillToggle('setup','control',this)">Control</button>
-          <button class="pill" onclick="pillToggle('setup','sliders',this)">Sliders</button>
+        <div class="filter-label"><span>Version</span></div>
+        <div class="pill-row" id="pills-version">
+          <button class="pill pill-all active" onclick="pillAll('version',this)">All</button>
+          <button class="pill" onclick="pillToggle('version','control',this)">Control</button>
+          <button class="pill" onclick="pillToggle('version','sliders',this)">Sliders</button>
         </div>
       </div>
 
@@ -293,7 +296,7 @@ let activeTaskId  = null;
 let rankChart = null, sliderChart = null;
 
 const filters = {
-  vocab: new Set(), setup: new Set(),
+  vocab: new Set(), version: new Set(),
   tasks: new Set(), concepts: new Set(),
 };
 
@@ -352,7 +355,7 @@ async function buildData() {
       session_id: sid,
       participant: sess.participant || sid,
       vocab: sess.vocab || sess.dataset || '',
-      setup: sess.setup || '',
+      version: sess.slider_version === 0 ? 'control' : sess.slider_version === 1 ? 'sliders' : (sess.setup || ''),
       numTasks: sess.tasks ?? sessionTasks.length,
       numConcepts: sess.concepts ?? null,
       numResults: sess.results ?? null,
@@ -397,7 +400,7 @@ function clearFilters() {
 function applyFilters() {
   filteredSessions = allSessions.filter(s => {
     if (filters.vocab.size    && !filters.vocab.has(s.vocab))                  return false;
-    if (filters.setup.size    && !filters.setup.has(s.setup))                  return false;
+    if (filters.version.size  && !filters.version.has(s.version))              return false;
     if (filters.tasks.size    && !filters.tasks.has(String(s.numTasks)))       return false;
     if (filters.concepts.size && !filters.concepts.has(String(s.numConcepts))) return false;
     return true;
@@ -427,7 +430,7 @@ function renderParticipantList() {
         <div class="p-name">${s.participant}</div>
         <div class="p-chips">
           ${s.vocab   ? `<span class="p-chip">${s.vocab}</span>` : ''}
-          ${s.setup   ? `<span class="p-chip">${s.setup}</span>` : ''}
+          ${s.version ? `<span class="p-chip">${s.version}</span>` : ''}
           ${s.numTasks!=null ? `<span class="p-chip">${s.numTasks}t</span>` : ''}
           ${s.numConcepts!=null ? `<span class="p-chip">${s.numConcepts}c</span>` : ''}
           ${s.numResults!=null ? `<span class="p-chip">${s.numResults}r</span>` : ''}
@@ -453,7 +456,7 @@ function renderSummaryTable() {
       <thead>
         <tr>
           <th>Participant</th>
-          <th>Vocab</th><th>Setup</th><th>Tasks</th><th>Concepts</th><th>Results</th>
+          <th>Vocab</th><th>Version</th><th>Tasks</th><th>Concepts</th><th>Results</th>
           <th>Success rate</th><th>Duration</th>
           <th></th>
         </tr>
@@ -464,7 +467,7 @@ function renderSummaryTable() {
           const rateColor = rate>=70?'var(--green)':rate>=40?'var(--amber)':'var(--red)';
           return `<tr onclick="drillIn('${s.session_id}')">
             <td><strong>${s.participant}</strong></td>
-            <td>${s.vocab||'—'}</td><td>${s.setup||'—'}</td>
+            <td>${s.vocab||'—'}</td><td>${s.version||'—'}</td>
             <td>${s.numTasks??'—'}</td><td>${s.numConcepts??'—'}</td><td>${s.numResults??'—'}</td>
             <td>
               <div class="mini-bar-wrap">
@@ -508,7 +511,7 @@ function drillIn(sessionId) {
       <div class="stat"><span class="stat-val">${fmtDur(d.duration_sec)}</span><span class="stat-label">Duration</span></div>
       <div class="config-chips">
         ${d.vocab     ? `<span class="config-chip">vocab: ${d.vocab}</span>` : ''}
-        ${d.setup     ? `<span class="config-chip">setup: ${d.setup}</span>` : ''}
+        ${d.version   ? `<span class="config-chip">version: ${d.version}</span>` : ''}
         ${d.numTasks!=null ? `<span class="config-chip">tasks: ${d.numTasks}</span>` : ''}
         ${d.numConcepts!=null ? `<span class="config-chip">concepts: ${d.numConcepts}</span>` : ''}
         ${d.numResults!=null ? `<span class="config-chip">results: ${d.numResults}</span>` : ''}
@@ -779,6 +782,24 @@ function renderLikertFreqRow(value) {
 }
 
 // -- Aggregate view (top-level "Survey Results" nav) -------------------------
+function renderConditionBlock(sessions, label, n) {
+  if (!sessions.length) return '';
+  const tlxRows = TLX_FIELDS.map(f => renderScoreBar(f.label, fieldAverage(sessions,'workload',f.key), 7, f.full)).join('');
+  const susRows = SUS_FIELDS.map(f => renderScoreBar(f.label, fieldAverage(sessions,'usability',f.key), 5, f.full)).join('');
+  return `
+    <div class="condition-block">
+      <div class="condition-label">${label} <span style="font-weight:400;color:var(--muted)">(n=${n})</span></div>
+      <div class="card" style="margin-bottom:0;">
+        <h3>NASA-TLX (avg, scale 1–7)</h3>
+        <div class="sliders-grid" style="margin-top:8px;">${tlxRows}</div>
+      </div>
+      <div class="card" style="margin-top:12px;margin-bottom:0;">
+        <h3>SUS (avg, scale 1–5)</h3>
+        <div class="sliders-grid" style="margin-top:8px;">${susRows}</div>
+      </div>
+    </div>`;
+}
+
 function renderSurveyResults() {
   const el = document.getElementById('view-survey');
   const withSurvey = filteredSessions.filter(s => s.survey);
@@ -787,34 +808,37 @@ function renderSurveyResults() {
     return;
   }
 
-  const tlxRows = TLX_FIELDS.map(f => renderScoreBar(f.label, fieldAverage(withSurvey,'workload',f.key), 7, f.full)).join('');
-  const susRows = SUS_FIELDS.map(f => renderScoreBar(f.label, fieldAverage(withSurvey,'usability',f.key), 5, f.full)).join('');
+  const control  = withSurvey.filter(s => s.version === 'control');
+  const sliders  = withSurvey.filter(s => s.version === 'sliders');
+  const hasBoth  = control.length > 0 && sliders.length > 0;
+
+  const aggregateHTML = hasBoth
+    ? `<div class="conditions-row">
+        ${renderConditionBlock(control, 'Control', control.length)}
+        ${renderConditionBlock(sliders, 'Sliders', sliders.length)}
+       </div>`
+    : renderConditionBlock(withSurvey,
+        control.length ? 'Control' : sliders.length ? 'Sliders' : 'All',
+        withSurvey.length);
 
   el.innerHTML = `
     <div class="summary-header">
       <h2>Survey Results</h2>
       <p>${withSurvey.length} participant${withSurvey.length!==1?'s':''} with completed surveys (averages, current filters)</p>
     </div>
-    <div class="charts-row">
-      <div class="card">
-        <h3>NASA-TLX (avg, scale 1–7)</h3>
-        <div class="sliders-grid" style="margin-top:8px;">${tlxRows}</div>
-      </div>
-      <div class="card">
-        <h3>SUS (avg, scale 1–5)</h3>
-        <div class="sliders-grid" style="margin-top:8px;">${susRows}</div>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:24px;">
+    ${aggregateHTML}
+    <div class="card" style="margin-top:24px;margin-bottom:24px;">
       <h3>Individual responses</h3>
       <table class="summary-table">
-        <thead><tr><th>Participant</th><th>Mental</th><th>Temporal</th><th>Perf.</th><th>Effort</th><th>Frust.</th><th>SUS avg</th><th></th></tr></thead>
+        <thead><tr><th>Participant</th><th>Version</th><th>Mental</th><th>Temporal</th><th>Perf.</th><th>Effort</th><th>Frust.</th><th>SUS avg</th><th></th></tr></thead>
         <tbody>
           ${withSurvey.map(s => {
             const w = s.survey.workload || {};
-            const susAvg = SUS_FIELDS.reduce((sum,f)=>sum+(w!==undefined && s.survey.usability?.[f.key]!=null ? s.survey.usability[f.key] : 0),0) / SUS_FIELDS.length;
+            const susAvg = SUS_FIELDS.reduce((sum,f)=>sum+(s.survey.usability?.[f.key]!=null ? s.survey.usability[f.key] : 0),0) / SUS_FIELDS.length;
+            const vChip = s.version ? `<span class="p-chip" style="font-size:10px;">${s.version}</span>` : '—';
             return `<tr>
               <td><strong>${s.participant}</strong></td>
+              <td>${vChip}</td>
               <td>${w.mental ?? '—'}</td><td>${w.temporal ?? '—'}</td><td>${w.performance ?? '—'}</td>
               <td>${w.effort ?? '—'}</td><td>${w.frustration ?? '—'}</td>
               <td>${susAvg.toFixed(1)}</td>
