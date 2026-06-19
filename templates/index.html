@@ -182,8 +182,9 @@
   .sliders-grid { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
   .slider-row { display: flex; align-items: center; gap: 8px; }
   .slider-name { font-size: 11px; color: var(--muted); width: 90px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .slider-track { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
-  .slider-fill { height: 100%; border-radius: 2px; }
+  .slider-track { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; position: relative; overflow: visible; }
+  .slider-track::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--border); transform: translateX(-0.5px); }
+  .slider-fill { height: 100%; border-radius: 2px; position: absolute; top: 0; }
   .slider-pct { font-size: 10px; color: var(--muted); width: 30px; text-align: right; }
   .no-data { color: var(--muted); font-style: italic; font-size: 12px; }
 
@@ -702,23 +703,23 @@ function groupSearchesByQuery(searches) {
   return groups;
 }
 
-function renderChangedSliderBars(sliders, prevSliders) {
-  // Visual bar for just the slider(s) that moved THIS step (compared to
-  // the previous search). If there's no previous search, falls back to
-  // showing any non-zero starting value.
+function renderChangedSliderBars(sliders) {
+  // Visual bar for just the slider(s) that moved this step — shown inline
+  // in the main step row so the adjustment is visible without opening the
+  // dropdown. Fills grow outward from a 0 center: negative goes left (red),
+  // positive goes right (blue/accent).
   const changed = sliders
     .map((sl, i) => ({ ...sl, idx: i }))
-    .filter(sl => {
-      const prevVal = prevSliders ? (prevSliders[sl.idx]?.value ?? 0) : 0;
-      return sl.value !== prevVal;
-    });
+    .filter(sl => sl.value !== 0);
   if (!changed.length) return '';
   return `<div class="step-slider-bars">${changed.map(sl => {
     const pct = Math.round(sl.value*100), neg = pct<0;
+    const halfWidth = Math.min(Math.abs(pct),100) / 2;
+    const left = neg ? (50 - halfWidth) : 50;
     return `<div class="slider-row">
       <span class="slider-idx" style="width:24px;">#${sl.idx+1}</span>
       <span class="slider-name">${sl.name}</span>
-      <div class="slider-track"><div class="slider-fill" style="width:${Math.min(Math.abs(pct),100)}%;background:${neg?'var(--red)':'linear-gradient(90deg,var(--accent),var(--accent2))'}"></div></div>
+      <div class="slider-track"><div class="slider-fill" style="left:${left}%;width:${halfWidth}%;background:${neg?'var(--red)':'linear-gradient(90deg,var(--accent),var(--accent2))'}"></div></div>
       <span class="slider-pct" style="color:${neg?'var(--red)':'var(--muted)'}">${sl.value.toFixed(3)}</span>
     </div>`;
   }).join('')}</div>`;
@@ -757,7 +758,7 @@ function renderTimeline(task) {
       const successTag = s.target_clicked ? `<span class="badge badge-green">✓ found</span>` : '';
       const rankBadge  = s.target_rank!=null ? `<span class="badge ${rankCls(s.target_rank)}">rank #${s.target_rank}</span>` : `<span class="badge badge-muted">no rank</span>`;
       const ntBadge     = s.non_target_click_count>0 ? `<span class="badge badge-amber">${s.non_target_click_count} other click${s.non_target_click_count>1?'s':''}</span>` : '';
-      const changedBars = s.has_sliders ? renderChangedSliderBars(s.sliders, prev ? prev.sliders : null) : '';
+      const changedBars = s.has_sliders ? renderChangedSliderBars(s.sliders) : '';
       const stepKey = `${task.task_id}_${gi}_${si}`;
 
       return `<div class="search-step">
