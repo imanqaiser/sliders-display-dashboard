@@ -143,7 +143,8 @@
   .task-chip:hover { border-color: var(--accent); color: var(--accent); }
   .task-chip.active { background: rgba(79,124,255,0.15); border-color: var(--accent); color: var(--accent); }
   .task-chip.success { border-color: rgba(34,201,135,0.4); }
-  .task-chip.skip { border-color: rgba(123,130,166,0.3); }
+  .task-chip.skip { border-color: rgba(79,124,255,0.4); }
+  .task-chip.failure { border-color: rgba(242,92,92,0.4); }
 
   /* session bar */
   .session-bar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 20px; margin-bottom: 24px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
@@ -160,11 +161,11 @@
   .target-img:hover { opacity: 0.85; }
   .task-info h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
   .badges { display: flex; gap: 8px; flex-wrap: wrap; }
-  .badge { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; }
-  .badge-green { background: rgba(34,201,135,0.12); color: var(--green); border: 1px solid rgba(34,201,135,0.25); }
-  .badge-amber { background: rgba(245,166,35,0.12); color: var(--amber); border: 1px solid rgba(245,166,35,0.25); }
-  .badge-red   { background: rgba(242,92,92,0.12); color: var(--red); border: 1px solid rgba(242,92,92,0.25); }
-  .badge-blue  { background: rgba(79,124,255,0.12); color: var(--accent); border: 1px solid rgba(79,124,255,0.25); }
+  .badge { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: rgba(34,201,135,0.28); color: #b3ffe0; border: 1px solid rgba(34,201,135,0.4); }
+  .badge-amber { background: rgba(245,166,35,0.28); color: #ffe0ad; border: 1px solid rgba(245,166,35,0.4); }
+  .badge-red   { background: rgba(242,92,92,0.28); color: #ffc7c7; border: 1px solid rgba(242,92,92,0.4); }
+  .badge-blue  { background: rgba(79,124,255,0.28); color: #c9d6ff; border: 1px solid rgba(79,124,255,0.4); }
   .badge-muted { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
   .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
@@ -185,6 +186,20 @@
   .slider-fill { height: 100%; border-radius: 2px; }
   .slider-pct { font-size: 10px; color: var(--muted); width: 30px; text-align: right; }
   .no-data { color: var(--muted); font-style: italic; font-size: 12px; }
+
+  .search-steps-list { display: flex; flex-direction: column; gap: 6px; }
+  .search-step { border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); overflow: hidden; }
+  .search-step-head { display: flex; align-items: center; gap: 7px; padding: 7px 10px; flex-wrap: wrap; }
+  .step-num { font-size: 10px; color: var(--muted); font-weight: 700; width: 16px; flex-shrink: 0; }
+  .step-config-toggle { font-size: 10px; color: var(--accent); margin-left: auto; flex-shrink: 0; cursor: pointer; padding: 2px 6px; border-radius: 5px; }
+  .step-config-toggle:hover { background: rgba(79,124,255,0.12); }
+  .step-changed-bars { padding: 2px 10px 8px; display: flex; flex-direction: column; gap: 4px; }
+  .step-slider-detail { padding: 8px 10px 10px 32px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+  .slider-num-row { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 2px 0; }
+  .slider-num-row.zero { opacity: 0.4; }
+  .slider-idx { color: var(--muted); width: 28px; flex-shrink: 0; font-weight: 600; }
+  .slider-num-name { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slider-num-val { font-weight: 700; font-family: monospace; width: 60px; text-align: right; flex-shrink: 0; }
 
   /* modal */
   .img-modal-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); align-items: center; justify-content: center; cursor: zoom-out; }
@@ -364,6 +379,7 @@ async function buildData() {
       tasks: sessionTasks,
       success_count: sessionTasks.filter(t => t.status==='success').length,
       skip_count:    sessionTasks.filter(t => t.status==='skip').length,
+      failure_count: sessionTasks.filter(t => t.status==='failure').length,
       survey: surveyBySession[sid] || null,
     };
   });
@@ -504,7 +520,9 @@ function drillIn(sessionId) {
       <div class="divider"></div>
       <div class="stat"><span class="stat-val" style="color:var(--green)">${d.success_count}</span><span class="stat-label">Success</span></div>
       <div class="divider"></div>
-      <div class="stat"><span class="stat-val" style="color:var(--muted)">${d.skip_count}</span><span class="stat-label">Skipped</span></div>
+      <div class="stat"><span class="stat-val" style="color:var(--accent)">${d.skip_count}</span><span class="stat-label">Skipped</span></div>
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-val" style="color:var(--red)">${d.failure_count}</span><span class="stat-label">Incorrect</span></div>
       <div class="divider"></div>
       <div class="stat"><span class="stat-val" style="color:var(--accent)">${rate}%</span><span class="stat-label">Rate</span></div>
       <div class="divider"></div>
@@ -520,8 +538,8 @@ function drillIn(sessionId) {
 
   // Task strip
   const taskChips = activeSession.tasks.map(t => {
-    const cls = t.status === 'success' ? 'success' : 'skip';
-    const dot  = t.status === 'success' ? '✓' : '⊘';
+    const cls = t.status === 'success' ? 'success' : t.status === 'failure' ? 'failure' : 'skip';
+    const dot = t.status === 'success' ? '✓' : t.status === 'failure' ? '✕' : '⊘';
     return `<button class="task-chip ${cls}" data-id="${t.task_id}" onclick="selectTask('${t.task_id}')">
       ${dot} Task ${t.task_idx+1}
     </button>`;
@@ -566,7 +584,9 @@ function renderTaskDetail(task) {
   if (sliderChart) { sliderChart.destroy(); sliderChart = null; }
 
   const searches = task.searches;
-  const statusBadge   = task.status==='success' ? `<span class="badge badge-green">✓ success</span>` : `<span class="badge badge-muted">⊘ skipped</span>`;
+  const statusBadge = task.status==='success' ? `<span class="badge badge-green">✓ success</span>`
+    : task.status==='failure' ? `<span class="badge badge-red">✕ incorrect</span>`
+    : `<span class="badge badge-blue">⊘ skipped</span>`;
   const bestRankBadge = task.best_rank!=null ? `<span class="badge ${rankCls(task.best_rank)}">Best rank: #${task.best_rank}</span>` : `<span class="badge badge-muted">No rank data</span>`;
 
   let lastActionBadge = '';
@@ -574,7 +594,8 @@ function renderTaskDetail(task) {
     const oi = task.status==='success' ? searches.findIndex(s=>s.target_clicked) : searches.length-1;
     const os = searches[Math.max(oi,0)], ps = oi>0 ? searches[oi-1] : null;
     const al = actionLabel(os, ps);
-    lastActionBadge = `<span class="badge ${task.status==='success'?'badge-green':'badge-muted'}">${task.status==='success'?'→ ':'last: '}${al}</span>`;
+    const badgeCls = task.status==='success' ? 'badge-green' : task.status==='failure' ? 'badge-red' : 'badge-blue';
+    lastActionBadge = `<span class="badge ${badgeCls}">${task.status==='success'?'→ ':'last: '}${al}</span>`;
   }
 
   document.getElementById('task-detail').innerHTML = `
@@ -666,34 +687,115 @@ function renderSliderFreq(task) {
   });
 }
 
+function groupSearchesByQuery(searches) {
+  // Groups consecutive searches that share the same query_text into one
+  // block, so a sequence of slider-only tweaks doesn't repeat the query.
+  const groups = [];
+  searches.forEach((s, i) => {
+    const prevGroup = groups[groups.length - 1];
+    if (prevGroup && prevGroup.query_text === s.query_text) {
+      prevGroup.steps.push({ search: s, idx: i });
+    } else {
+      groups.push({ query_text: s.query_text, steps: [{ search: s, idx: i }] });
+    }
+  });
+  return groups;
+}
+
+function renderChangedSliderBars(sliders, prevSliders) {
+  // Visual bar for just the slider(s) that moved THIS step (compared to
+  // the previous search). If there's no previous search, falls back to
+  // showing any non-zero starting value.
+  const changed = sliders
+    .map((sl, i) => ({ ...sl, idx: i }))
+    .filter(sl => {
+      const prevVal = prevSliders ? (prevSliders[sl.idx]?.value ?? 0) : 0;
+      return sl.value !== prevVal;
+    });
+  if (!changed.length) return '';
+  return `<div class="step-slider-bars">${changed.map(sl => {
+    const pct = Math.round(sl.value*100), neg = pct<0;
+    return `<div class="slider-row">
+      <span class="slider-idx" style="width:24px;">#${sl.idx+1}</span>
+      <span class="slider-name">${sl.name}</span>
+      <div class="slider-track"><div class="slider-fill" style="width:${Math.min(Math.abs(pct),100)}%;background:${neg?'var(--red)':'linear-gradient(90deg,var(--accent),var(--accent2))'}"></div></div>
+      <span class="slider-pct" style="color:${neg?'var(--red)':'var(--muted)'}">${sl.value.toFixed(3)}</span>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderSliderList(sliders) {
+  // Numbered slider list (#1, #2, ...) with the name and the raw numeric
+  // value emphasized, since the value itself matters more than a bar.
+  return sliders.map((sl, i) => {
+    const v = sl.value ?? 0;
+    const isZero = v === 0;
+    const color = v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--muted)';
+    return `<div class="slider-num-row${isZero?' zero':''}">
+      <span class="slider-idx">#${i+1}</span>
+      <span class="slider-num-name">${sl.name}</span>
+      <span class="slider-num-val" style="color:${color}">${v.toFixed(3)}</span>
+    </div>`;
+  }).join('');
+}
+
 function renderTimeline(task) {
-  document.getElementById('timeline').innerHTML = task.searches.map((s,i) => {
-    const prev = i>0 ? task.searches[i-1] : null;
-    const al   = actionLabel(s, prev);
-    const actionTag = prev ? `<span class="badge ${al==='no change'?'badge-muted':'badge-blue'}">${al}</span>` : `<span class="badge badge-muted">initial</span>`;
-    const successTag = s.target_clicked ? `<span class="badge badge-green">✓ found</span>` : '';
-    const rankBadge  = s.target_rank!=null ? `<span class="badge ${rankCls(s.target_rank)}">rank #${s.target_rank}</span>` : `<span class="badge badge-muted">no rank</span>`;
-    const ntBadge    = s.non_target_click_count>0 ? `<span class="badge badge-amber">${s.non_target_click_count} other click${s.non_target_click_count>1?'s':''}</span>` : '';
-    const sliderRows = s.sliders.filter(sl=>sl.value!==0).map(sl => {
-      const pct = Math.round(sl.value*100), neg = pct<0;
-      return `<div class="slider-row"><span class="slider-name">${sl.name}</span><div class="slider-track"><div class="slider-fill" style="width:${Math.abs(pct)}%;background:${neg?'#f25c5c':'linear-gradient(90deg,var(--accent),var(--accent2))'}"></div></div><span class="slider-pct" style="color:${neg?'#f25c5c':'var(--muted)'}">${pct}%</span></div>`;
-    }).join('');
-    const slidersHtml = s.has_sliders ? (sliderRows || `<p class="no-data" style="font-size:11px;">All sliders at zero</p>`) : `<p class="no-data">Text-only search</p>`;
-    return `<div class="timeline-item">
-      <div class="step-circle ${s.target_clicked?'clicked':''}">${i+1}</div>
-      <div class="search-card" style="${s.target_clicked?'border-color:var(--green);':''}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+  const groups = groupSearchesByQuery(task.searches);
+  document.getElementById('timeline').innerHTML = groups.map((g, gi) => {
+    const firstIdx = g.steps[0].idx;
+    const prevSearch = firstIdx > 0 ? task.searches[firstIdx - 1] : null;
+    const groupActionTag = prevSearch
+      ? `<span class="badge badge-blue">query change</span>`
+      : `<span class="badge badge-muted">initial</span>`;
+    const anyFoundInGroup = g.steps.some(st => st.search.target_clicked);
+
+    const stepsHtml = g.steps.map((st, si) => {
+      const s = st.search, i = st.idx;
+      const prev = i > 0 ? task.searches[i - 1] : null;
+      const al = si === 0 ? (prevSearch ? 'query change' : 'initial search') : actionLabel(s, prev);
+      const stepTag = si === 0 ? '' : `<span class="badge ${al==='no change'?'badge-muted':'badge-blue'}">${al}</span>`;
+      const successTag = s.target_clicked ? `<span class="badge badge-green">✓ found</span>` : '';
+      const rankBadge  = s.target_rank!=null ? `<span class="badge ${rankCls(s.target_rank)}">rank #${s.target_rank}</span>` : `<span class="badge badge-muted">no rank</span>`;
+      const ntBadge     = s.non_target_click_count>0 ? `<span class="badge badge-amber">${s.non_target_click_count} other click${s.non_target_click_count>1?'s':''}</span>` : '';
+      const changedBars = s.has_sliders ? renderChangedSliderBars(s.sliders, prev ? prev.sliders : null) : '';
+      const stepKey = `${task.task_id}_${gi}_${si}`;
+
+      return `<div class="search-step">
+        <div class="search-step-head">
+          <span class="step-num">${i+1}</span>
           <span class="timestamp">${new Date(s.timestamp).toTimeString().slice(0,8)}</span>
-          <div style="display:flex;gap:5px;flex-wrap:wrap;">${actionTag}${successTag}</div>
+          ${stepTag}${rankBadge}${successTag}${ntBadge}
+          ${s.has_sliders ? `<span class="step-config-toggle" id="toggle_${stepKey}" onclick="toggleStepSliders('${stepKey}')">full config ▾</span>` : `<span class="no-data" style="font-size:11px;margin-left:auto;">Text-only</span>`}
         </div>
+        ${changedBars ? `<div class="step-changed-bars">${changedBars}</div>` : (s.has_sliders ? `<p class="no-data" style="font-size:11px;padding:0 10px 8px;">All sliders unchanged this step</p>` : '')}
+        <div class="step-slider-detail" id="detail_${stepKey}" style="display:none;">
+          ${s.has_sliders ? renderSliderList(s.sliders) : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="timeline-item">
+      <div class="step-circle ${anyFoundInGroup?'clicked':''}">${gi+1}</div>
+      <div class="search-card" style="${anyFoundInGroup?'border-color:var(--green);':''}">
         <div class="search-top">
-          <span class="query">"${s.query_text}"</span>
-          <div style="display:flex;gap:5px;flex-wrap:wrap;">${rankBadge}${ntBadge}</div>
+          <span class="query">"${g.query_text}"</span>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">${groupActionTag}<span class="badge badge-muted">${g.steps.length} search${g.steps.length!==1?'es':''}</span></div>
         </div>
-        <div class="sliders-grid">${slidersHtml}</div>
+        <div class="search-steps-list">${stepsHtml}</div>
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleStepSliders(stepKey) {
+  const detail = document.getElementById('detail_' + stepKey);
+  const toggle = document.getElementById('toggle_' + stepKey);
+  if (!detail) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : '';
+  if (toggle) {
+    toggle.textContent = toggle.textContent.replace(isOpen ? '▴' : '▾', isOpen ? '▾' : '▴');
+  }
 }
 
 // ══ Helpers ════════════════════════════════════════════════════════════════
