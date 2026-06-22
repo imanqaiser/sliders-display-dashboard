@@ -452,6 +452,17 @@ async function buildData() {
   });
 }
 
+// Removes values more than 3 standard deviations from the mean.
+// Guards against a single runaway/idle task skewing an average duration.
+function removeOutliers3Std(values) {
+  if (values.length < 2) return values;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  const std = Math.sqrt(variance);
+  if (std === 0) return values;
+  return values.filter(v => Math.abs(v - mean) <= 3 * std);
+}
+
 // ══ Images index (task-level, cuts across all participants) ════════════════
 // Groups every task instance by its target_path so an image can be looked
 // up regardless of which participant/session saw it.
@@ -473,7 +484,8 @@ function buildImagesIndex(sessions) {
   });
   const result = [...byPath.values()];
   result.forEach(entry => {
-    const durations = entry.instances.map(i => i.task.duration_sec).filter(d => d != null && !isNaN(d));
+    const rawDurations = entry.instances.map(i => i.task.duration_sec).filter(d => d != null && !isNaN(d));
+    const durations = removeOutliers3Std(rawDurations);
     entry.avgDurationSec = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
   });
   return result.sort((a, b) => b.instances.length - a.instances.length);
