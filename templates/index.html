@@ -471,7 +471,12 @@ function buildImagesIndex(sessions) {
       else entry.skipCount++;
     });
   });
-  return [...byPath.values()].sort((a, b) => b.instances.length - a.instances.length);
+  const result = [...byPath.values()];
+  result.forEach(entry => {
+    const durations = entry.instances.map(i => i.task.duration_sec).filter(d => d != null && !isNaN(d));
+    entry.avgDurationSec = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+  });
+  return result.sort((a, b) => b.instances.length - a.instances.length);
 }
 
 
@@ -730,6 +735,7 @@ function renderImagesGrid() {
               ${entry.successCount ? `<span class="p-chip" style="border-color:rgba(34,201,135,0.4);color:#b3ffe0;">${entry.successCount}✓</span>` : ''}
               ${entry.failureCount ? `<span class="p-chip" style="border-color:rgba(242,92,92,0.4);color:#ffc7c7;">${entry.failureCount}✕</span>` : ''}
               ${entry.skipCount ? `<span class="p-chip" style="border-color:rgba(79,124,255,0.4);color:#c9d6ff;">${entry.skipCount}⊘</span>` : ''}
+              ${entry.avgDurationSec!=null ? `<span class="p-chip" style="border-color:var(--border);">⏱ ${fmtDur(entry.avgDurationSec)} avg</span>` : ''}
             </div>
           </div>
         </div>`;
@@ -760,6 +766,7 @@ function imageDrillIn(path) {
           ${entry.successCount ? `<span class="badge badge-green">${entry.successCount} success</span>` : ''}
           ${entry.failureCount ? `<span class="badge badge-red">${entry.failureCount} incorrect</span>` : ''}
           ${entry.skipCount ? `<span class="badge badge-muted">${entry.skipCount} skipped</span>` : ''}
+          ${entry.avgDurationSec!=null ? `<span class="badge badge-muted">⏱ ${fmtDur(entry.avgDurationSec)} avg time</span>` : ''}
         </div>
       </div>
     </div>
