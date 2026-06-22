@@ -253,6 +253,8 @@
         <div class="pill-row" id="pills-tasks">
           <button class="pill pill-all active" onclick="pillAll('tasks',this)">All</button>
           <button class="pill" onclick="pillToggle('tasks','5',this)">5</button>
+          <button class="pill" onclick="pillToggle('tasks','6',this)">6</button>
+          <button class="pill" onclick="pillToggle('tasks','8',this)">8</button>
           <button class="pill" onclick="pillToggle('tasks','10',this)">10</button>
         </div>
       </div>
@@ -357,6 +359,17 @@ async function buildData() {
         };
       });
       const ranks = taskSearches.map(s => s.target_rank).filter(r => r!==null);
+
+      // Determine the single "last action" for this task: the transition
+      // into the final search of the task (regardless of outcome).
+      let lastAction = null;
+      if (taskSearches.length > 0) {
+        const idx = taskSearches.length - 1;
+        const cur = taskSearches[idx];
+        const prev = idx > 0 ? taskSearches[idx - 1] : null;
+        lastAction = computeActionLabel(cur, prev);
+      }
+
       return {
         task_id: tid, task_idx: task.task_idx, target_path: task.target_path,
         status: task.status,
@@ -364,9 +377,19 @@ async function buildData() {
         searches: taskSearches, search_count: taskSearches.length,
         best_rank: ranks.length ? Math.min(...ranks) : null,
         final_rank: ranks.length ? ranks[ranks.length-1] : null,
+        last_action: lastAction,
       };
     });
     const dur = durSec(sess.start_time, sess.end_time);
+
+    // Tally each task's last action into a per-participant strategy label.
+    // 'initial search' and 'query change' both count as a query vote;
+    // 'slider adjustment' counts as a slider vote; 'no change' is excluded
+    // from both tallies. Ties (including 0-0) default to 'query'.
+    const queryVotes  = sessionTasks.filter(t => t.last_action === 'query change' || t.last_action === 'initial search').length;
+    const sliderVotes = sessionTasks.filter(t => t.last_action === 'slider adjustment').length;
+    const strategy = sliderVotes > queryVotes ? 'sliders' : 'query';
+
     return {
       session_id: sid,
       participant: sess.participant || sid,
@@ -382,6 +405,7 @@ async function buildData() {
       skip_count:    sessionTasks.filter(t => t.status==='skip').length,
       failure_count: sessionTasks.filter(t => t.status==='failure').length,
       survey: surveyBySession[sid] || null,
+      strategy, query_vote_count: queryVotes, slider_vote_count: sliderVotes,
     };
   });
 }
@@ -474,6 +498,7 @@ function renderSummaryTable() {
         <tr>
           <th>Participant</th>
           <th>Vocab</th><th>Version</th><th>Tasks</th><th>Concepts</th><th>Results</th>
+          <th>Strategy</th>
           <th>Success rate</th><th>Duration</th>
           <th></th>
         </tr>
@@ -482,10 +507,15 @@ function renderSummaryTable() {
         ${filteredSessions.map(s => {
           const rate = Math.round(s.success_count / s.task_count * 100);
           const rateColor = rate>=70?'var(--green)':rate>=40?'var(--amber)':'var(--red)';
+          const stratColor = s.strategy === 'sliders' ? 'var(--accent2)' : 'var(--accent)';
+          const stratLabel = s.strategy === 'sliders' ? 'Sliders' : 'Query';
           return `<tr onclick="drillIn('${s.session_id}')">
             <td><strong>${s.participant}</strong></td>
             <td>${s.vocab||'—'}</td><td>${s.version||'—'}</td>
             <td>${s.numTasks??'—'}</td><td>${s.numConcepts??'—'}</td><td>${s.numResults??'—'}</td>
+            <td>
+              <span class="p-chip" style="border-color:${stratColor};color:${stratColor};" title="${s.query_vote_count} query / ${s.slider_vote_count} slider">${stratLabel}</span>
+            </td>
             <td>
               <div class="mini-bar-wrap">
                 <div class="mini-bar"><div class="mini-bar-fill" style="width:${rate}%;background:${rateColor}"></div></div>
@@ -592,8 +622,8 @@ function renderTaskDetail(task) {
 
   let lastActionBadge = '';
   if (searches.length > 0) {
-    const oi = task.status==='success' ? searches.findIndex(s=>s.target_clicked) : searches.length-1;
-    const os = searches[Math.max(oi,0)], ps = oi>0 ? searches[oi-1] : null;
+    const idx = searches.length - 1;
+    const os = searches[idx], ps = idx > 0 ? searches[idx - 1] : null;
     const al = actionLabel(os, ps);
     const badgeCls = task.status==='success' ? 'badge-green' : task.status==='failure' ? 'badge-red' : 'badge-blue';
     lastActionBadge = `<span class="badge ${badgeCls}">${task.status==='success'?'→ ':'last: '}${al}</span>`;
@@ -800,12 +830,13 @@ function toggleStepSliders(stepKey) {
 }
 
 // ══ Helpers ════════════════════════════════════════════════════════════════
-function actionLabel(s, prev) {
+function computeActionLabel(s, prev) {
   if (!prev) return 'initial search';
   if (s.query_text !== prev.query_text) return 'query change';
   if (s.sliders.some((sl,j) => sl.value !== (prev.sliders[j]?.value??0))) return 'slider adjustment';
   return 'no change';
 }
+function actionLabel(s, prev) { return computeActionLabel(s, prev); }
 function rankCls(r) { return r==null?'badge-muted':r<=10?'badge-green':r<=50?'badge-amber':'badge-red'; }
 function fmtDur(sec) { const m=Math.floor(sec/60),s=sec%60; return m>0?`${m}m ${s}s`:`${s}s`; }
 
