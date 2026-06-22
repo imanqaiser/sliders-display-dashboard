@@ -212,6 +212,37 @@
   /* task comparison strip across participants */
   .compare-banner { background: rgba(79,124,255,0.07); border: 1px solid rgba(79,124,255,0.2); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 20px; font-size: 12px; color: var(--accent); display: none; }
   .compare-banner.visible { display: block; }
+
+  /* ── Images grid ── */
+  .images-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; gap: 16px; flex-wrap: wrap; }
+  .img-search-wrap { position: relative; flex: 1; max-width: 360px; min-width: 220px; }
+  .img-search-input {
+    width: 100%; padding: 8px 12px 8px 32px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text); font-size: 12px; font-family: var(--font);
+  }
+  .img-search-input:focus { outline: none; border-color: var(--accent); }
+  .img-search-input::placeholder { color: var(--muted); }
+  .img-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--muted); pointer-events: none; }
+  .images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .image-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; cursor: pointer; transition: all 0.12s; display: flex; flex-direction: column;
+  }
+  .image-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .image-card-thumb { width: 100%; height: 130px; object-fit: cover; background: var(--surface2); display: block; }
+  .image-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .image-card-name { font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; }
+  .image-card-stats { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ── Image drill-in ── */
+  .image-drill-header { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 24px; }
+  .image-drill-img { width: 160px; height: 160px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); flex-shrink: 0; cursor: zoom-in; transition: opacity 0.15s; }
+  .image-drill-img:hover { opacity: 0.85; }
+  .image-drill-path { font-size: 11px; color: var(--muted); font-family: monospace; word-break: break-all; margin-top: 6px; }
+  .image-instances-table th { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .image-instances-table td { padding: 10px 12px; border-bottom: 1px solid rgba(46,50,80,0.5); font-size: 12px; vertical-align: middle; }
+  .image-instances-table tr:hover td { background: var(--surface2); cursor: pointer; }
+  .image-instances-table { width: 100%; border-collapse: collapse; }
 </style>
 </head>
 <body>
@@ -223,6 +254,7 @@
       <p id="hdr-sub">Loading…</p>
       <div class="nav-row">
         <button class="nav-btn active" id="nav-participants" onclick="showSummary()">Participants</button>
+        <button class="nav-btn" id="nav-images" onclick="showImages()">Images</button>
         <button class="nav-btn" id="nav-survey" onclick="showSurveyResults()">Survey Results</button>
       </div>
     </div>
@@ -298,6 +330,13 @@
     </div>
     <!-- Survey results (aggregate) view -->
     <div id="view-survey" style="display:none;"></div>
+    <!-- Images grid view -->
+    <div id="view-images" style="display:none;"></div>
+    <!-- Image drill-in view -->
+    <div id="view-image-drill" class="drill-panel">
+      <button class="back-btn" onclick="showImages()">← Back to images</button>
+      <div id="image-drill-content"></div>
+    </div>
   </main>
 </div>
 
@@ -312,6 +351,9 @@ let filteredSessions = [];
 let activeSession = null;
 let activeTaskId  = null;
 let rankChart = null, sliderChart = null;
+let imagesIndex = [];       // [{path, instances:[{session, task}], successCount, totalCount}]
+let imageSearchText = '';
+let activeImagePath = null;
 
 const filters = {
   vocab: new Set(), version: new Set(),
@@ -410,7 +452,29 @@ async function buildData() {
   });
 }
 
-// ══ Filter UI ══════════════════════════════════════════════════════════════
+// ══ Images index (task-level, cuts across all participants) ════════════════
+// Groups every task instance by its target_path so an image can be looked
+// up regardless of which participant/session saw it.
+function buildImagesIndex(sessions) {
+  const byPath = new Map();
+  sessions.forEach(s => {
+    s.tasks.forEach(t => {
+      const path = t.target_path;
+      if (!path) return;
+      if (!byPath.has(path)) {
+        byPath.set(path, { path, instances: [], successCount: 0, failureCount: 0, skipCount: 0 });
+      }
+      const entry = byPath.get(path);
+      entry.instances.push({ session: s, task: t });
+      if (t.status === 'success') entry.successCount++;
+      else if (t.status === 'failure') entry.failureCount++;
+      else entry.skipCount++;
+    });
+  });
+  return [...byPath.values()].sort((a, b) => b.instances.length - a.instances.length);
+}
+
+
 function buildFilterUI() {
   // All pill groups are hardcoded in HTML — nothing to render dynamically
 }
@@ -538,8 +602,11 @@ function drillIn(sessionId) {
 
   document.getElementById('view-summary').style.display = 'none';
   document.getElementById('view-survey').style.display = 'none';
+  document.getElementById('view-images').style.display = 'none';
+  document.getElementById('view-image-drill').classList.remove('visible');
   document.getElementById('view-drill').classList.add('visible');
   document.getElementById('nav-participants').classList.add('active');
+  document.getElementById('nav-images').classList.remove('active');
   document.getElementById('nav-survey').classList.remove('active');
 
   // Session bar
@@ -586,7 +653,10 @@ function showSummary() {
   document.getElementById('view-summary').style.display = '';
   document.getElementById('view-drill').classList.remove('visible');
   document.getElementById('view-survey').style.display = 'none';
+  document.getElementById('view-images').style.display = 'none';
+  document.getElementById('view-image-drill').classList.remove('visible');
   document.getElementById('nav-participants').classList.add('active');
+  document.getElementById('nav-images').classList.remove('active');
   document.getElementById('nav-survey').classList.remove('active');
   renderParticipantList();
 }
@@ -595,11 +665,139 @@ function showSurveyResults() {
   activeSession = null; activeTaskId = null;
   document.getElementById('view-summary').style.display = 'none';
   document.getElementById('view-drill').classList.remove('visible');
+  document.getElementById('view-images').style.display = 'none';
+  document.getElementById('view-image-drill').classList.remove('visible');
   document.getElementById('view-survey').style.display = '';
   document.getElementById('nav-participants').classList.remove('active');
+  document.getElementById('nav-images').classList.remove('active');
   document.getElementById('nav-survey').classList.add('active');
   renderParticipantList();
   renderSurveyResults();
+}
+
+// ══ Images view (task-level, by target image) ═══════════════════════════════
+function showImages() {
+  activeSession = null; activeTaskId = null;
+  document.getElementById('view-summary').style.display = 'none';
+  document.getElementById('view-drill').classList.remove('visible');
+  document.getElementById('view-survey').style.display = 'none';
+  document.getElementById('view-image-drill').classList.remove('visible');
+  document.getElementById('view-images').style.display = '';
+  document.getElementById('nav-participants').classList.remove('active');
+  document.getElementById('nav-survey').classList.remove('active');
+  document.getElementById('nav-images').classList.add('active');
+  renderImagesGrid();
+}
+
+function imageBasename(path) {
+  if (!path) return '';
+  const clean = path.split('?')[0].split('#')[0];
+  const parts = clean.split('/');
+  return parts[parts.length - 1] || clean;
+}
+
+function onImageSearchInput(val) {
+  imageSearchText = val.trim().toLowerCase();
+  renderImagesGrid();
+}
+
+function renderImagesGrid() {
+  const el = document.getElementById('view-images');
+  const matches = imageSearchText
+    ? imagesIndex.filter(e => e.path.toLowerCase().includes(imageSearchText))
+    : imagesIndex;
+
+  el.innerHTML = `
+    <div class="images-header">
+      <h2>Target Images</h2>
+      <div class="img-search-wrap">
+        <svg class="img-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="img-search-input" type="text" placeholder="Search by filename or path…"
+               value="${imageSearchText}" oninput="onImageSearchInput(this.value)">
+      </div>
+      <p style="font-size:12px;color:var(--muted);">${matches.length} of ${imagesIndex.length} images</p>
+    </div>
+    ${!matches.length ? `<div class="loading" style="padding-top:60px;">No images match "${imageSearchText}".</div>` : `
+    <div class="images-grid">
+      ${matches.map(entry => {
+        const total = entry.instances.length;
+        return `<div class="image-card" onclick="imageDrillIn('${entry.path}')">
+          <img class="image-card-thumb" src="${entry.path}" alt="" loading="lazy" onerror="this.style.opacity=0.15">
+          <div class="image-card-body">
+            <div class="image-card-name" title="${entry.path}">${imageBasename(entry.path)}</div>
+            <div class="image-card-stats">
+              <span class="p-chip" style="border-color:var(--border);">${total} task${total!==1?'s':''}</span>
+              ${entry.successCount ? `<span class="p-chip" style="border-color:rgba(34,201,135,0.4);color:#b3ffe0;">${entry.successCount}✓</span>` : ''}
+              ${entry.failureCount ? `<span class="p-chip" style="border-color:rgba(242,92,92,0.4);color:#ffc7c7;">${entry.failureCount}✕</span>` : ''}
+              ${entry.skipCount ? `<span class="p-chip" style="border-color:rgba(79,124,255,0.4);color:#c9d6ff;">${entry.skipCount}⊘</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  `;
+}
+
+function imageDrillIn(path) {
+  activeImagePath = path;
+  const entry = imagesIndex.find(e => e.path === path);
+  if (!entry) return;
+
+  document.getElementById('view-images').style.display = 'none';
+  document.getElementById('view-image-drill').classList.add('visible');
+
+  const total = entry.instances.length;
+  document.getElementById('image-drill-content').innerHTML = `
+    <div class="image-drill-header">
+      <div>
+        <img class="image-drill-img" src="${entry.path}" alt="target" onclick="openModal('${entry.path}')" onerror="this.style.opacity=0.15">
+        <div class="image-drill-path">${entry.path}</div>
+      </div>
+      <div class="task-info">
+        <h2>${imageBasename(entry.path)}</h2>
+        <div class="badges">
+          <span class="badge badge-blue">${total} task instance${total!==1?'s':''}</span>
+          ${entry.successCount ? `<span class="badge badge-green">${entry.successCount} success</span>` : ''}
+          ${entry.failureCount ? `<span class="badge badge-red">${entry.failureCount} incorrect</span>` : ''}
+          ${entry.skipCount ? `<span class="badge badge-muted">${entry.skipCount} skipped</span>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Participants who saw this image</h3>
+      <table class="image-instances-table">
+        <thead>
+          <tr>
+            <th>Participant</th><th>Task #</th><th>Status</th>
+            <th>Searches</th><th>Best rank</th><th>Duration</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entry.instances.map(({session, task}) => {
+            const statusBadge = task.status==='success' ? `<span class="badge badge-green">✓ success</span>`
+              : task.status==='failure' ? `<span class="badge badge-red">✕ incorrect</span>`
+              : `<span class="badge badge-blue">⊘ skipped</span>`;
+            return `<tr onclick="jumpToInstance('${session.session_id}','${task.task_id}')">
+              <td><strong>${session.participant}</strong></td>
+              <td>Task ${task.task_idx+1}</td>
+              <td>${statusBadge}</td>
+              <td>${task.search_count}</td>
+              <td>${task.best_rank!=null ? '#'+task.best_rank : '—'}</td>
+              <td>${fmtDur(task.duration_sec)}</td>
+              <td><button class="drill-btn" onclick="event.stopPropagation();jumpToInstance('${session.session_id}','${task.task_id}')">View →</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// Jump from an image's instance list into that participant's normal
+// drill-in view, landing directly on the relevant task.
+function jumpToInstance(sessionId, taskId) {
+  document.getElementById('view-image-drill').classList.remove('visible');
+  drillIn(sessionId);
+  selectTask(taskId);
 }
 
 function selectTask(taskId) {
@@ -1030,6 +1228,7 @@ async function init() {
   if (!data.length) { document.getElementById('view-summary').innerHTML='<div class="loading">No data found.</div>'; return; }
   allSessions = data;
   filteredSessions = [...allSessions];
+  imagesIndex = buildImagesIndex(allSessions);
   buildFilterUI();
   applyFilters();
 }
