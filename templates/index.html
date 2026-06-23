@@ -247,7 +247,6 @@
 </head>
 <body>
 <div class="app">
-  <!-- ══ SIDEBAR ══ -->
   <aside class="sidebar">
     <div class="sidebar-header">
       <h1>Sliders Dashboard</h1>
@@ -260,7 +259,6 @@
     </div>
 
     <div class="filters">
-      <!-- Vocab -->
       <div class="filter-row">
         <div class="filter-label"><span>Vocab</span></div>
         <div class="pill-row" id="pills-vocab">
@@ -269,7 +267,6 @@
           <button class="pill" onclick="pillToggle('vocab','multi',this)">Multi</button>
         </div>
       </div>
-      <!-- Setup -->
       <div class="filter-row">
         <div class="filter-label"><span>Version</span></div>
         <div class="pill-row" id="pills-version">
@@ -279,7 +276,6 @@
         </div>
       </div>
 
-      <!-- Tasks pills -->
       <div class="filter-row">
         <div class="filter-label"><span>Tasks</span></div>
         <div class="pill-row" id="pills-tasks">
@@ -290,7 +286,6 @@
           <button class="pill" onclick="pillToggle('tasks','10',this)">10</button>
         </div>
       </div>
-      <!-- Concepts pills -->
       <div class="filter-row">
         <div class="filter-label"><span>Sliders / Concepts</span></div>
         <div class="pill-row" id="pills-concepts">
@@ -314,13 +309,10 @@
     </div>
   </aside>
 
-  <!-- ══ MAIN ══ -->
   <main class="main">
-    <!-- Summary table view -->
     <div id="view-summary">
       <div class="loading">Loading data…</div>
     </div>
-    <!-- Drill-in view -->
     <div id="view-drill" class="drill-panel">
       <button class="back-btn" onclick="showSummary()">← Back to participants</button>
       <div id="drill-session-bar"></div>
@@ -328,11 +320,8 @@
       <div class="task-strip" id="task-strip"></div>
       <div id="task-detail"></div>
     </div>
-    <!-- Survey results (aggregate) view -->
     <div id="view-survey" style="display:none;"></div>
-    <!-- Images grid view -->
     <div id="view-images" style="display:none;"></div>
-    <!-- Image drill-in view -->
     <div id="view-image-drill" class="drill-panel">
       <button class="back-btn" onclick="showImages()">← Back to images</button>
       <div id="image-drill-content"></div>
@@ -383,6 +372,11 @@ async function buildData() {
 
   return sessions.map(sess => {
     const sid = sess.session_id;
+    
+    // Total counters for every individual API request made across all participant tasks
+    let totalQueryEvents = 0;
+    let totalSliderEvents = 0;
+
     const sessionTasks = tasks.filter(t => t.session_id === sid).sort((a,b) => a.task_idx - b.task_idx).map(task => {
       const tid = task.task_id;
       const taskSearches = (sByTask[tid] || []).sort((a,b) => parseDate(a.timestamp)-parseDate(b.timestamp)).map(srch => {
@@ -402,8 +396,17 @@ async function buildData() {
       });
       const ranks = taskSearches.map(s => s.target_rank).filter(r => r!==null);
 
-      // Determine the single "last action" for this task: the transition
-      // into the final search of the task (regardless of outcome).
+      // Loop over every individual search in this task to update absolute operation metrics
+      taskSearches.forEach((cur, idx) => {
+        const prev = idx > 0 ? taskSearches[idx - 1] : null;
+        const label = computeActionLabel(cur, prev);
+        if (label === 'initial search' || label === 'query change') {
+          totalQueryEvents++;
+        } else if (label === 'slider adjustment') {
+          totalSliderEvents++;
+        }
+      });
+
       let lastAction = null;
       if (taskSearches.length > 0) {
         const idx = taskSearches.length - 1;
@@ -424,17 +427,13 @@ async function buildData() {
     });
     const dur = durSec(sess.start_time, sess.end_time);
 
-    // Tally each task's last action into a per-participant strategy label.
-    // 'initial search' and 'query change' both count as a query vote;
-    // 'slider adjustment' counts as a slider vote; 'no change' is excluded
-    // from both tallies. Ties (including 0-0) default to 'query'.
-    const queryVotes  = sessionTasks.filter(t => t.last_action === 'query change' || t.last_action === 'initial search').length;
-    const sliderVotes = sessionTasks.filter(t => t.last_action === 'slider adjustment').length;
-    const strategy = sliderVotes > queryVotes ? 'sliders' : 'query';
+    // Dynamic strategy categorization fallback
+    const strategy = totalSliderEvents > totalQueryEvents ? 'sliders' : 'query';
+    const prolificId = sess.prolific && sess.prolific.pid;
 
     return {
       session_id: sid,
-      participant: sess.participant || sid,
+      participant: sess.participant || prolificId || sid,
       vocab: sess.vocab || sess.dataset || '',
       version: sess.slider_version === 0 ? 'control' : sess.slider_version === 1 ? 'sliders' : (sess.setup || ''),
       numTasks: sess.tasks ?? sessionTasks.length,
@@ -447,7 +446,9 @@ async function buildData() {
       skip_count:    sessionTasks.filter(t => t.status==='skip').length,
       failure_count: sessionTasks.filter(t => t.status==='failure').length,
       survey: surveyBySession[sid] || null,
-      strategy, query_vote_count: queryVotes, slider_vote_count: sliderVotes,
+      strategy, 
+      query_vote_count: totalQueryEvents, 
+      slider_vote_count: totalSliderEvents,
     };
   });
 }
@@ -519,6 +520,7 @@ function clearFilters() {
   applyFilters();
 }
 
+// ══ Participant list (sidebar) ══════════════════════════════════════════════
 function applyFilters() {
   filteredSessions = allSessions.filter(s => {
     if (filters.vocab.size    && !filters.vocab.has(s.vocab))                  return false;
@@ -536,7 +538,6 @@ function applyFilters() {
   if (document.getElementById('view-survey').style.display !== 'none') renderSurveyResults();
 }
 
-// ══ Participant list (sidebar) ══════════════════════════════════════════════
 function renderParticipantList() {
   const el = document.getElementById('p-list');
   if (!filteredSessions.length) {
@@ -579,7 +580,7 @@ function renderSummaryTable() {
         <tr>
           <th>Participant</th>
           <th>Vocab</th><th>Version</th><th>Tasks</th><th>Concepts</th><th>Results</th>
-          <th>Strategy</th>
+          <th>Actions (Text vs Slider)</th>
           <th>Success rate</th><th>Duration</th>
           <th></th>
         </tr>
@@ -588,14 +589,15 @@ function renderSummaryTable() {
         ${filteredSessions.map(s => {
           const rate = Math.round(s.success_count / s.task_count * 100);
           const rateColor = rate>=70?'var(--green)':rate>=40?'var(--amber)':'var(--red)';
-          const stratColor = s.strategy === 'sliders' ? 'var(--accent2)' : 'var(--accent)';
-          const stratLabel = s.strategy === 'sliders' ? 'Sliders' : 'Query';
           return `<tr onclick="drillIn('${s.session_id}')">
             <td><strong>${s.participant}</strong></td>
             <td>${s.vocab||'—'}</td><td>${s.version||'—'}</td>
             <td>${s.numTasks??'—'}</td><td>${s.numConcepts??'—'}</td><td>${s.numResults??'—'}</td>
             <td>
-              <span class="p-chip" style="border-color:${stratColor};color:${stratColor};" title="${s.query_vote_count} query / ${s.slider_vote_count} slider">${stratLabel}</span>
+              <span class="p-chip" style="border-color:var(--border);color:var(--text);" title="All actions tracked across history: ${s.query_vote_count} text queries, ${s.slider_vote_count} slider updates">
+                <span style="color:var(--accent);font-weight:bold;">${s.query_vote_count} text</span> / 
+                <span style="color:var(--accent2);font-weight:bold;">${s.slider_vote_count} slider</span>
+              </span>
             </td>
             <td>
               <div class="mini-bar-wrap">
