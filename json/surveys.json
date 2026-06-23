@@ -1,0 +1,38 @@
+[
+  {
+    "_id": {
+      "$oid": "6a2f981238d6d8cd25fc2346"
+    },
+    "survey_id": "7abd6e36-23e5-4557-90a3-b68f4e2eb6a8",
+    "timestamp": {
+      "$date": "2026-06-15T06:13:38.617Z"
+    },
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "participant_id": "3039102399957",
+    "workload": {
+      "mental": 4,
+      "temporal": 4,
+      "performance": 4,
+      "effort": 4,
+      "frustration": 4
+    },
+    "usability": {
+      "sus1": 3,
+      "sus2": 3,
+      "sus3": 3,
+      "sus4": 3,
+      "sus5": 3,
+      "sus6": 3,
+      "sus7": 3,
+      "sus8": 3,
+      "sus9": 3,
+      "sus10": 3
+    },
+    "frequency": "Sometimes",
+    "open_text": {
+      "confused": "hi 1",
+      "difficult": "HI 2",
+      "feedback": "hi 3"
+    }
+  }
+]

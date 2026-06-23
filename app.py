@@ -64,13 +64,22 @@ def get_real_session_ids(db):
     """
     A session counts as a real participant (not a test/dev session) if:
       1. session.user_type == "pilot"
-      2. there's a matching survey for that session_id, fully completed
+      2. session has Prolific metadata
+      3. session.vocab == "multi"
+      4. there's a matching survey for that session_id, fully completed
          (all NASA-TLX + SUS fields answered)
     Returns a set of qualifying session_ids.
     """
     pilot_session_ids = {
         s["session_id"]
-        for s in db.sessions.find({"user_type": "pilot"}, {"session_id": 1})
+        for s in db.sessions.find(
+            {
+                "user_type": "pilot",
+                "vocab": "multi",
+                "prolific": {"$exists": True, "$ne": None},
+            },
+            {"session_id": 1}
+        )
     }
     if not pilot_session_ids:
         return set()

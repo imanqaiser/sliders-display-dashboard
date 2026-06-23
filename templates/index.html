@@ -297,6 +297,19 @@
         </div>
       </div>
 
+      <div class="filter-row">
+        <div class="filter-label">
+          <span>Duration outliers</span>
+          <span class="filter-val" id="duration-outlier-label">> 3 SD hidden</span>
+        </div>
+        <div class="pill-row">
+          <label class="pill active" style="cursor:pointer;">
+            <input id="duration-outlier-enabled" type="checkbox" checked onchange="updateDurationOutlierFilter()" style="margin-right:6px;">
+            Hide outliers
+          </label>
+        </div>
+      </div>
+
       <div class="filter-actions">
         <span class="match-count" id="match-count"></span>
         <button class="clear-btn" onclick="clearFilters()">Clear all</button>
@@ -343,6 +356,8 @@ let rankChart = null, sliderChart = null;
 let imagesIndex = [];       // [{path, instances:[{session, task}], successCount, totalCount}]
 let imageSearchText = '';
 let activeImagePath = null;
+let hideDurationOutliers = true;
+const DURATION_OUTLIER_STD = 3;
 
 const filters = {
   vocab: new Set(), version: new Set(),
@@ -356,8 +371,32 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 
 // ══ Data loading ═══════════════════════════════════════════════════════════
 async function loadJSON(p) { const r = await fetch(p); return r.json(); }
-function parseDate(v) { if (v && typeof v === 'object' && '$date' in v) v = v['$date']; return v ? new Date(v) : null; }
+function parseDate(v) {
+  if (v && typeof v === 'object' && '$date' in v) v = v['$date'];
+  if (!v) return null;
+  if (typeof v === 'string' && !/[zZ]|[+-]\d\d:?\d\d$/.test(v)) v = `${v}Z`;
+  return new Date(v);
+}
 function durSec(a, b) { return Math.round((parseDate(b) - parseDate(a)) / 1000); }
+function centralTimeLabel(v) {
+  const d = parseDate(v);
+  if (!d) return 'Incomplete';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d);
+}
+function attentionCheckLabel(v) {
+  if (v === true) return 'Passed';
+  if (v === false) return 'Failed';
+  return 'Unknown';
+}
+function attentionCheckColor(v) {
+  if (v === true) return 'var(--green)';
+  if (v === false) return 'var(--red)';
+  return 'var(--muted)';
+}
 
 async function buildData() {
   const [sessions, tasks, searches, clicks, surveys] = await Promise.all([
@@ -426,6 +465,7 @@ async function buildData() {
       };
     });
     const dur = durSec(sess.start_time, sess.end_time);
+    const completedAt = parseDate(sess.end_time);
 
     // Dynamic strategy categorization fallback
     const strategy = totalSliderEvents > totalQueryEvents ? 'sliders' : 'query';
@@ -434,6 +474,9 @@ async function buildData() {
     return {
       session_id: sid,
       participant: sess.participant || prolificId || sid,
+      completed_at: completedAt ? completedAt.toISOString() : null,
+      completed_at_label: centralTimeLabel(sess.end_time),
+      attention_check_passed: sess.attention_check_passed,
       vocab: sess.vocab || sess.dataset || '',
       version: sess.slider_version === 0 ? 'control' : sess.slider_version === 1 ? 'sliders' : (sess.setup || ''),
       numTasks: sess.tasks ?? sessionTasks.length,
@@ -450,7 +493,7 @@ async function buildData() {
       query_vote_count: totalQueryEvents, 
       slider_vote_count: totalSliderEvents,
     };
-  });
+  }).sort((a, b) => parseDate(b.completed_at) - parseDate(a.completed_at));
 }
 
 // Removes values more than 3 standard deviations from the mean.
@@ -462,6 +505,29 @@ function removeOutliers3Std(values) {
   const std = Math.sqrt(variance);
   if (std === 0) return values;
   return values.filter(v => Math.abs(v - mean) <= 3 * std);
+}
+
+function durationStats(sessions) {
+  const durations = sessions
+    .map(s => s.duration_sec)
+    .filter(d => d != null && !isNaN(d));
+  if (durations.length < 2) return null;
+
+  const mean = durations.reduce((a, b) => a + b, 0) / durations.length;
+  const variance = durations.reduce((a, b) => a + (b - mean) ** 2, 0) / durations.length;
+  const std = Math.sqrt(variance);
+  return { mean, std };
+}
+
+function isDurationOutlier(session, stats) {
+  if (!stats || stats.std === 0 || session.duration_sec == null || isNaN(session.duration_sec)) return false;
+  return Math.abs(session.duration_sec - stats.mean) > DURATION_OUTLIER_STD * stats.std;
+}
+
+function updateDurationOutlierFilter() {
+  const enabled = document.getElementById('duration-outlier-enabled');
+  hideDurationOutliers = enabled ? enabled.checked : true;
+  applyFilters();
 }
 
 // ══ Images index (task-level, cuts across all participants) ════════════════
@@ -512,23 +578,36 @@ function pillAll(key, el) {
 
 
 function clearFilters() {
-  ['vocab','setup','tasks','concepts'].forEach(k => {
+  ['vocab','version','tasks','concepts'].forEach(k => {
     filters[k].clear();
     document.querySelectorAll(`#pills-${k} .pill`).forEach(p => p.classList.remove('active'));
     document.querySelector(`#pills-${k} .pill-all`).classList.add('active');
   });
+  hideDurationOutliers = true;
+  const enabled = document.getElementById('duration-outlier-enabled');
+  if (enabled) enabled.checked = true;
   applyFilters();
 }
 
 // ══ Participant list (sidebar) ══════════════════════════════════════════════
 function applyFilters() {
+  const stats = durationStats(allSessions);
+  const hiddenOutliers = allSessions.filter(s => hideDurationOutliers && isDurationOutlier(s, stats)).length;
+
   filteredSessions = allSessions.filter(s => {
+    if (hideDurationOutliers && isDurationOutlier(s, stats)) return false;
     if (filters.vocab.size    && !filters.vocab.has(s.vocab))                  return false;
     if (filters.version.size  && !filters.version.has(s.version))              return false;
     if (filters.tasks.size    && !filters.tasks.has(String(s.numTasks)))       return false;
     if (filters.concepts.size && !filters.concepts.has(String(s.numConcepts))) return false;
     return true;
   });
+  const outlierLabel = document.getElementById('duration-outlier-label');
+  if (outlierLabel) {
+    outlierLabel.textContent = hideDurationOutliers
+      ? `> ${DURATION_OUTLIER_STD} SD hidden (${hiddenOutliers})`
+      : 'shown';
+  }
   document.getElementById('match-count').innerHTML =
     `<strong>${filteredSessions.length}</strong> of ${allSessions.length} participants`;
   document.getElementById('hdr-sub').textContent =
@@ -552,6 +631,8 @@ function renderParticipantList() {
       <div class="p-info">
         <div class="p-name">${s.participant}</div>
         <div class="p-chips">
+          <span class="p-chip">${s.completed_at_label}</span>
+          <span class="p-chip" style="color:${attentionCheckColor(s.attention_check_passed)}">${attentionCheckLabel(s.attention_check_passed)}</span>
           ${s.vocab   ? `<span class="p-chip">${s.vocab}</span>` : ''}
           ${s.version ? `<span class="p-chip">${s.version}</span>` : ''}
           ${s.numTasks!=null ? `<span class="p-chip">${s.numTasks}t</span>` : ''}
@@ -579,6 +660,8 @@ function renderSummaryTable() {
       <thead>
         <tr>
           <th>Participant</th>
+          <th>Completed</th>
+          <th>Attention</th>
           <th>Vocab</th><th>Version</th><th>Tasks</th><th>Concepts</th><th>Results</th>
           <th>Actions (Text vs Slider)</th>
           <th>Success rate</th><th>Duration</th>
@@ -591,6 +674,8 @@ function renderSummaryTable() {
           const rateColor = rate>=70?'var(--green)':rate>=40?'var(--amber)':'var(--red)';
           return `<tr onclick="drillIn('${s.session_id}')">
             <td><strong>${s.participant}</strong></td>
+            <td>${s.completed_at_label}</td>
+            <td><span class="p-chip" style="color:${attentionCheckColor(s.attention_check_passed)}">${attentionCheckLabel(s.attention_check_passed)}</span></td>
             <td>${s.vocab||'—'}</td><td>${s.version||'—'}</td>
             <td>${s.numTasks??'—'}</td><td>${s.numConcepts??'—'}</td><td>${s.numResults??'—'}</td>
             <td>

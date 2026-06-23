@@ -1,0 +1,82 @@
+[
+  {
+    "_id": {
+      "$oid": "6a2f936c38d6d8cd25fc2287"
+    },
+    "task_id": "2e4926d0-6e9a-4ed9-88f0-28a3a315d9fc",
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "start_time": {
+      "$date": "2026-06-15T05:53:48.830Z"
+    },
+    "end_time": {
+      "$date": "2026-06-15T05:56:47.697Z"
+    },
+    "task_idx": 0,
+    "target_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000103499.jpg",
+    "status": "success"
+  },
+  {
+    "_id": {
+      "$oid": "6a2f941f38d6d8cd25fc22b8"
+    },
+    "task_id": "5f51d9ad-fc50-4d83-bfae-1e69e6bc1263",
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "start_time": {
+      "$date": "2026-06-15T05:56:47.755Z"
+    },
+    "end_time": {
+      "$date": "2026-06-15T06:02:03.199Z"
+    },
+    "task_idx": 1,
+    "target_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000299039.jpg",
+    "status": "skip"
+  },
+  {
+    "_id": {
+      "$oid": "6a2f955b38d6d8cd25fc22db"
+    },
+    "task_id": "4f577637-5bc7-402a-9d92-29de2825b866",
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "start_time": {
+      "$date": "2026-06-15T06:02:03.257Z"
+    },
+    "end_time": {
+      "$date": "2026-06-15T06:07:37.998Z"
+    },
+    "task_idx": 2,
+    "target_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000349868.jpg",
+    "status": "success"
+  },
+  {
+    "_id": {
+      "$oid": "6a2f96aa38d6d8cd25fc2314"
+    },
+    "task_id": "2ee51146-5243-49ed-80e8-5ed7cf131dbc",
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "start_time": {
+      "$date": "2026-06-15T06:07:38.054Z"
+    },
+    "end_time": {
+      "$date": "2026-06-15T06:12:24.224Z"
+    },
+    "task_idx": 3,
+    "target_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000144243.jpg",
+    "status": "success"
+  },
+  {
+    "_id": {
+      "$oid": "6a2f97c838d6d8cd25fc2343"
+    },
+    "task_id": "d90270ed-09c0-4427-85dc-fc172723e3f1",
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "start_time": {
+      "$date": "2026-06-15T06:12:24.286Z"
+    },
+    "end_time": {
+      "$date": "2026-06-15T06:13:01.808Z"
+    },
+    "task_idx": 4,
+    "target_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000457453.jpg",
+    "status": "success"
+  }
+]

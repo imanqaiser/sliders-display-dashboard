@@ -1,0 +1,62 @@
+[
+  {
+    "_id": {
+      "$oid": "6a2f941338d6d8cd25fc22b6"
+    },
+    "search_id": "d0e86a63-bcb1-4aab-b1c0-74bd7a626052",
+    "click_id": "a54b5de3-28d5-48d4-bcda-f89f6fb253ae",
+    "timestamp": {
+      "$date": "2026-06-15T05:56:35.398Z"
+    },
+    "image_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000103499.jpg",
+    "is_target": true
+  },
+  {
+    "_id": {
+      "$oid": "6a2f941b38d6d8cd25fc22b7"
+    },
+    "search_id": "d0e86a63-bcb1-4aab-b1c0-74bd7a626052",
+    "click_id": "863bf779-66e0-403b-a9c5-46e375a5bab4",
+    "timestamp": {
+      "$date": "2026-06-15T05:56:43.864Z"
+    },
+    "image_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000103499.jpg",
+    "is_target": true
+  },
+  {
+    "_id": {
+      "$oid": "6a2f96a938d6d8cd25fc2313"
+    },
+    "search_id": "78235d0f-ea9e-4d5b-ad29-ad94c8b01765",
+    "click_id": "f5d7f77a-9fe1-4da8-b4d6-549a430f28eb",
+    "timestamp": {
+      "$date": "2026-06-15T06:07:37.032Z"
+    },
+    "image_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000349868.jpg",
+    "is_target": true
+  },
+  {
+    "_id": {
+      "$oid": "6a2f97c738d6d8cd25fc2342"
+    },
+    "search_id": "e26e4e0c-7da2-4788-920a-e6c159a498e7",
+    "click_id": "e31701a8-9e39-42af-bde2-d4f9c77be062",
+    "timestamp": {
+      "$date": "2026-06-15T06:12:23.439Z"
+    },
+    "image_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000144243.jpg",
+    "is_target": true
+  },
+  {
+    "_id": {
+      "$oid": "6a2f97ec38d6d8cd25fc2345"
+    },
+    "search_id": "5a096fcc-501f-4254-a342-26584a2c240d",
+    "click_id": "7c9cdb0e-d7c4-42e3-bb1f-17e7c175e630",
+    "timestamp": {
+      "$date": "2026-06-15T06:13:00.796Z"
+    },
+    "image_path": "https://slidersdatasetstorage.blob.core.windows.net/image-datasets/coco/validation/COCO_val2014_000000457453.jpg",
+    "is_target": true
+  }
+]

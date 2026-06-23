@@ -1,0 +1,22 @@
+[
+  {
+    "_id": {
+      "$oid": "6a2f933638d6d8cd25fc2286"
+    },
+    "session_id": "c06424e8-311b-4c39-8731-53c5de3f9511",
+    "start_time": {
+      "$date": "2026-06-15T05:52:54.448Z"
+    },
+    "end_time": {
+      "$date": "2026-06-15T06:13:38.695Z"
+    },
+    "dataset": "coco",
+    "tasks": 5,
+    "concepts": 12,
+    "results": 100,
+    "sliders": 1,
+    "slider_version": 1,
+    "condition": "sliders",
+    "vocab": "single"
+  }
+]
